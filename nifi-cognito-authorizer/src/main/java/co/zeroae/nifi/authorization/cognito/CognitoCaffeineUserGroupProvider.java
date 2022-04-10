@@ -7,7 +7,6 @@ import org.apache.nifi.authorization.*;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.GroupType;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.ListGroupsRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.ListUsersRequest;
@@ -24,25 +23,15 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
     LoadingCache<String, Set<GroupType>> groupTypeCache;
     LoadingCache<String, Optional<Group>> groupsCache;
 
-
     LoadingCache<String, Set<UserType>> userTypeCache;
     LoadingCache<String, Optional<User>> usersCache;
     LoadingCache<String, Optional<User>> userByIdentityCache;
+    LoadingCache<String, UserAndGroups> userAndGroupsCache;
 
     @Override
     public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
         super.initialize(initializationContext);
         // TODO: Use a Cache Spec String
-        groupTypeCache = Caffeine.newBuilder()
-                .expireAfterWrite(1, TimeUnit.MINUTES)
-                .build(userPoolId -> cognitoClient.listGroupsPaginator(ListGroupsRequest.builder()
-                        .userPoolId(userPoolId)
-                        .limit(pageSize)
-                        .build())
-                        .groups()
-                        .stream()
-                        .collect(Collectors.toSet())
-                );
         groupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(new CacheLoaderAll<String, Group>() {
@@ -61,23 +50,25 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
                         return value.getIdentifier();
                     }
                 });
-
-        userTypeCache = Caffeine.newBuilder()
+        groupTypeCache = Caffeine.newBuilder()
                 .expireAfterWrite(1, TimeUnit.MINUTES)
-                .build(userPoolId -> cognitoClient.listUsersPaginator(ListUsersRequest.builder()
+                .build(userPoolId -> cognitoClient.listGroupsPaginator(ListGroupsRequest.builder()
                                 .userPoolId(userPoolId)
                                 .limit(pageSize)
                                 .build())
-                        .users()
+                        .groups()
                         .stream()
                         .collect(Collectors.toSet())
                 );
-        
+
         userByIdentityCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(identity ->
-                    Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
+                        Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
                 );
+        userAndGroupsCache = Caffeine.newBuilder()
+                .refreshAfterWrite(1, TimeUnit.MINUTES)
+                .build(CognitoCaffeineUserGroupProvider.super::getUserAndGroups);
         usersCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(new CacheLoaderAll<String, User>() {
@@ -92,7 +83,16 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
                     @Override
                     public String getKey(User value) {return value.getIdentifier();}
                 });
-
+        userTypeCache = Caffeine.newBuilder()
+                .expireAfterWrite(1, TimeUnit.MINUTES)
+                .build(userPoolId -> cognitoClient.listUsersPaginator(ListUsersRequest.builder()
+                                .userPoolId(userPoolId)
+                                .limit(pageSize)
+                                .build())
+                        .users()
+                        .stream()
+                        .collect(Collectors.toSet())
+                );
     }
 
     @Override
@@ -133,6 +133,11 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
     @Override
     public User getUser(String identifier) throws AuthorizationAccessException {
         return Objects.requireNonNull(usersCache.get(identifier)).orElse(null);
+    }
+
+    @Override
+    public UserAndGroups getUserAndGroups(String identity) throws AuthorizationAccessException {
+        return userAndGroupsCache.get(identity);
     }
 
     @Override
