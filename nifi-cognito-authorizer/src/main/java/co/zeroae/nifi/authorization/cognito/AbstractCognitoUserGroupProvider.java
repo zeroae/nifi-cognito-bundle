@@ -2,10 +2,12 @@ package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.UserGroupProvider;
+import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
 import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.util.FormatUtils;
+import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -16,7 +18,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Paths;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
@@ -32,6 +34,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     private static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 
     public static final long MINIMUM_SYNC_INTERVAL_MILLISECONDS = 10_000;
+
     CognitoIdentityProviderClient cognitoClient;
     String userPoolId;
     int pageSize;
