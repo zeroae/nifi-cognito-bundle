@@ -124,31 +124,31 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
     }
 
     @Override
-    public Group updateGroup(Group newGroup) throws AuthorizationAccessException {
-        Group currentGroup = getGroup(newGroup.getIdentifier());
+    public Group updateGroup(Group group) throws AuthorizationAccessException {
+        Group current = getGroup(group.getIdentifier());
 
-        if (!currentGroup.getName().equals(newGroup.getName()))
+        if (!current.getName().equals(group.getName()))
             throw new AuthorizationAccessException("Cognito does not support changing group names.");
 
-        final Set<String> usersToAdd = new HashSet<>(newGroup.getUsers());
-        usersToAdd.removeAll(currentGroup.getUsers());
+        final Set<String> usersToAdd = new HashSet<>(group.getUsers());
+        usersToAdd.removeAll(current.getUsers());
 
-        final Set<String> usersToRemove = new HashSet<>(currentGroup.getUsers());
-        usersToRemove.removeAll(newGroup.getUsers());
+        final Set<String> usersToRemove = new HashSet<>(current.getUsers());
+        usersToRemove.removeAll(group.getUsers());
 
         usersToAdd.forEach(user -> {
             try {
                 cognitoClient.adminAddUserToGroup(AdminAddUserToGroupRequest.builder()
                         .userPoolId(userPoolId)
                         .username(user)
-                        .groupName(currentGroup.getIdentifier())
+                        .groupName(current.getIdentifier())
                         .build());
-                groupsCache.invalidate(currentGroup.getIdentifier());
+                groupsCache.invalidate(current.getIdentifier());
             } catch (UserNotFoundException e) {
-                logger.warn(String.format("Error adding '%s' to group '%s'. User was not found.",
-                        user, currentGroup.getName()), e);
+                logger.warn(String.format("Not adding '%s' to group '%s'. User was not found in Cognito.",
+                        user, current.getName()));
             } catch (CognitoIdentityProviderException e) {
-                logger.error(String.format("Error adding user %s to group %s", user, currentGroup.getName()), e);
+                logger.error(String.format("Error adding user %s to group %s", user, current.getName()), e);
                 throw new AuthorizationAccessException(e.getMessage(), e);
             }
         });
@@ -157,17 +157,19 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
                 cognitoClient.adminRemoveUserFromGroup(AdminRemoveUserFromGroupRequest.builder()
                         .userPoolId(userPoolId)
                         .username(user)
-                        .groupName(currentGroup.getIdentifier())
+                        .groupName(current.getIdentifier())
                         .build());
-                groupsCache.invalidate(currentGroup.getIdentifier());
             } catch (UserNotFoundException e) {
-                logger.warn(String.format("Error removing '%s' from group %s", user, currentGroup.getName()), e);
+                logger.warn(String.format("Error removing '%s' from group '%s'. User not found in Cognito",
+                        user, current.getName()));
             } catch (CognitoIdentityProviderException e) {
-                logger.error(String.format("Error removing user %s from group %s", user, currentGroup.getName()), e);
+                logger.error(String.format("Error removing user %s from group %s", user, current.getName()), e);
                 throw new AuthorizationAccessException(e.getMessage(), e);
+            } finally {
+                groupsCache.invalidate(current.getIdentifier());
             }
         });
-        return getGroup(newGroup.getIdentifier());
+        return getGroup(group.getIdentifier());
     }
 
     @Override
