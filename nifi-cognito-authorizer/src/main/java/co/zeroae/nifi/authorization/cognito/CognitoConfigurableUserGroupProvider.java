@@ -4,13 +4,10 @@ import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.ConfigurableUserGroupProvider;
 import org.apache.nifi.authorization.Group;
 import org.apache.nifi.authorization.User;
-import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
-import org.apache.nifi.authorization.util.IdentityMapping;
 import org.apache.nifi.authorization.util.IdentityMappingUtil;
-import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,31 +15,10 @@ import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
 import java.util.*;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGroupProvider implements ConfigurableUserGroupProvider {
     private final static Logger logger = LoggerFactory.getLogger(CognitoConfigurableUserGroupProvider.class);
-
-    static final String PROP_INITIAL_USER_IDENTITY_PREFIX = "Initial User Identity ";
-    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(PROP_INITIAL_USER_IDENTITY_PREFIX + "\\S+");
-
-    static final String NODE_IDENTITY_PROPERTY = "Node Identity";
-    static final String DEFAULT_NODE_IDENTITY = "CN=localhost, OU=NIFI";
-
-    static final String NODE_GROUP_PROPERTY = "Node Group";
-    static final String DEFAULT_NODE_GROUP = "Cluster";
-
-    NiFiProperties properties;
-
-    Set<String> initialUserIdentities;
-    List<IdentityMapping> identityMappings;
-    List<IdentityMapping> groupMappings;
-
-    @AuthorizerContext
-    public void setup(NiFiProperties properties) {
-        this.properties = properties;
-    }
 
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
@@ -53,10 +29,10 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
         groupMappings = Collections.unmodifiableList(IdentityMappingUtil.getGroupMappings(properties));
 
         String nodeIdentity = IdentityMappingUtil.mapIdentity(
-                getProperty(configurationContext, NODE_IDENTITY_PROPERTY, DEFAULT_NODE_IDENTITY),
+                getProperty(configurationContext, PROP_NODE_IDENTITY, DEFAULT_NODE_IDENTITY),
                 identityMappings);
         String nodeGroupIdentifier = IdentityMappingUtil.mapIdentity(
-                getProperty(configurationContext, NODE_GROUP_PROPERTY, DEFAULT_NODE_GROUP),
+                getProperty(configurationContext, PROP_NODE_GROUP, DEFAULT_NODE_GROUP),
                 groupMappings
         ).replace(" ", "_");
 
