@@ -54,6 +54,7 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
             cognitoClient.adminCreateUser(request);
             usersCache.invalidate(user.getIdentifier());
             userByIdentityCache.invalidate(user.getIdentity());
+            userAndGroupsCache.invalidate(user.getIdentity());
         } catch (AliasExistsException e) {
             throw new IllegalStateException(e);
         } catch (CognitoIdentityProviderException e) {
@@ -93,7 +94,8 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {
             usersCache.invalidate(user.getIdentifier());
-            userByIdentityCache.invalidate(user.getIdentifier());
+            userByIdentityCache.invalidate(user.getIdentity());
+            userAndGroupsCache.invalidate(user.getIdentity());
             groupsCache.invalidateAll(userGroups.stream().map(Group::getIdentifier).collect(Collectors.toSet()));
         }
         return user;
@@ -167,6 +169,7 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
                 throw new AuthorizationAccessException(e.getMessage(), e);
             } finally {
                 groupsCache.invalidate(current.getIdentifier());
+                userAndGroupsCache.invalidate(getUser(user).getIdentity());
             }
         });
         return getGroup(group.getIdentifier());
