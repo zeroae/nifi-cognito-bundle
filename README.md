@@ -13,7 +13,7 @@ NiFi Authorization Extension using AWS Cognito
     ```xml
     <authorizers>
        <!-- 
-            The CognitoConfigurableUserGroupProvider provides User and Group Management backed by AWS Cognito.
+            The CognitoUserGroupProvider provides User and Group Management backed by AWS Cognito.
    
             - AWS Credentials File - The file where AWS Credentials can be found. If not defined it will use the standard 
                 AWS credentials provider path.
@@ -34,12 +34,12 @@ NiFi Authorization Extension using AWS Cognito
         -->
         <userGroupProvider>
             <identifier>cognito-configurable-user-group-provider</identifier>
-            <class>co.zeroae.nifi.authorization.cognito.CognitoConfigurableUserGroupProvider</class>
+            <class>co.zeroae.nifi.authorization.cognito.CognitoUserGroupProvider</class>
             <property name="AWS Credentials File">./conf/bootstrap-aws.conf</property>
             <property name="User Pool">COGNITO-USER-POOL-ID</property>
             <property name="Page Size">50</property>
             <property name="Initial User Identity 1">CN=administrator, OU=NIFI</property>
-            <property name="Node Identity">CN=localhost, OU=NIFI</property>
+            <property name="Node Identity 1">CN=localhost, OU=NIFI</property>
             <property name="Node Group">Cluster</property>
         </userGroupProvider>
         <accessPolicyProvider>

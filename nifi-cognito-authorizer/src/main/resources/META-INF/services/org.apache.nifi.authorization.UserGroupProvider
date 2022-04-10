@@ -13,4 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 co.zeroae.nifi.authorization.cognito.CognitoNaiveUserGroupProvider
-co.zeroae.nifi.authorization.cognito.CognitoCaffeineUserGroupProvider
+co.zeroae.nifi.authorization.cognito.CognitoUserGroupProvider

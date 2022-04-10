@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvider {
+public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
 
     // This caches the group names *only*
     // When it expires, we get pull for the groupNames again, and refresh the groupsCache
@@ -37,12 +37,12 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
                 .build(new CacheLoaderAll<String, Group>() {
                     @Override
                     public Optional<Group> load(@NonNull String key) {
-                        return Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getGroup(key));
+                        return Optional.ofNullable(CognitoUserGroupProvider.super.getGroup(key));
                     }
 
                     @Override
                     public Set<Group> getAllValues() {
-                        return CognitoCaffeineUserGroupProvider.super.getGroups();
+                        return CognitoUserGroupProvider.super.getGroups();
                     }
 
                     @Override
@@ -64,21 +64,21 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
         userByIdentityCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(identity ->
-                        Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
+                        Optional.ofNullable(CognitoUserGroupProvider.super.getUserByIdentity(identity))
                 );
         userAndGroupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(CognitoCaffeineUserGroupProvider.super::getUserAndGroups);
+                .build(CognitoUserGroupProvider.super::getUserAndGroups);
         usersCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(new CacheLoaderAll<String, User>() {
                     @Override
                     public Optional<User> load(@NonNull String key) {
-                        return Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUser(key));
+                        return Optional.ofNullable(CognitoUserGroupProvider.super.getUser(key));
                     }
 
                     @Override
-                    public Set<User> getAllValues() {return CognitoCaffeineUserGroupProvider.super.getUsers();}
+                    public Set<User> getAllValues() {return CognitoUserGroupProvider.super.getUsers();}
 
                     @Override
                     public String getKey(User value) {return value.getIdentifier();}
