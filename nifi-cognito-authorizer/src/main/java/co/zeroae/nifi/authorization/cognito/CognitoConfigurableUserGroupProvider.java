@@ -64,7 +64,7 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
 
     @Override
     public boolean isConfigurable(User user) {
-        return true;
+        return getUser(user.getIdentifier()) != null;
     }
 
     @Override
@@ -120,7 +120,7 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
 
     @Override
     public boolean isConfigurable(Group group) {
-        return ! group.getIdentifier().startsWith(userPoolId);
+        return ! group.getIdentifier().startsWith(userPoolId) && getGroup(group.getIdentifier()) != null;
     }
 
     @Override
