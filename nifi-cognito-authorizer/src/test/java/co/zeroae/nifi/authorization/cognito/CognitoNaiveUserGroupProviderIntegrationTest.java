@@ -18,6 +18,7 @@ package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.*;
 import org.apache.nifi.util.MockPropertyValue;
+import org.apache.nifi.util.NiFiProperties;
 import org.junit.jupiter.api.*;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
@@ -28,6 +29,8 @@ import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
 public class CognitoNaiveUserGroupProviderIntegrationTest {
@@ -37,6 +40,7 @@ public class CognitoNaiveUserGroupProviderIntegrationTest {
     private static final String NODE1_IDENTITY = "nifi+n1@nifi.zeroae.co";
     private static final String NODE2_IDENTITY = "nifi+n2@nifi.zeroae.co";
 
+    private NiFiProperties properties;
     private AuthorizerConfigurationContext authContext = Mockito.mock(AuthorizerConfigurationContext.class);
     private CognitoNaiveUserGroupProvider testingProvider;
     private UserGroupProviderInitializationContext initContext;
@@ -140,14 +144,17 @@ public class CognitoNaiveUserGroupProviderIntegrationTest {
 
         Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_USER_POOL_ID)))
                 .thenReturn(new MockPropertyValue(userPool.id()));
+
+        properties = mock(NiFiProperties.class);
     }
     private void setupTestingProvider() {
         testingProvider = new CognitoNaiveUserGroupProvider();
         try {
+            testingProvider.setup(properties);
             testingProvider.initialize(initContext);
             testingProvider.onConfigured(authContext);
-        } catch (final Exception exc) {
-            logger.error("Error during setup; tests cannot run on this system.");
+        } catch (final Exception e) {
+            logger.error("Error during setup; tests cannot run on this system.", e);
         }
     }
 

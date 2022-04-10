@@ -24,7 +24,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
 
         // Use FailSafe https://github.com/failsafe-lib/failsafe
         Set<String> initialIdentities = new HashSet<>(initialUserIdentities);
-        initialIdentities.add(nodeIdentity);
+        if (nodeIdentity  != null)
+            initialIdentities.add(nodeIdentity);
         initialIdentities.forEach(identity -> {
             int retry = 10;
             while (getUserByIdentity(identity) == null && retry > 0) {
@@ -46,7 +47,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
         });
 
         Set<String> initialGroupNames = new HashSet<>();
-        initialGroupNames.add(nodeGroupIdentity);
+        if (nodeGroupIdentity != null)
+            initialGroupNames.add(nodeGroupIdentity);
         initialGroupNames.forEach(identifier -> {
             int retry = 10;
             while (getGroup(identifier) == null && retry > 0) {
@@ -67,9 +69,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             }
         });
 
-        final String nodeIdentifier = getUserByIdentity(nodeIdentity).getIdentifier();
-        if (! getGroup(nodeGroupIdentity).getUsers().contains(nodeIdentifier))
-            addUserToGroup(nodeIdentifier, nodeGroupIdentity);
+        if (nodeIdentity != null && nodeGroupIdentity != null) {
+            final String nodeIdentifier = getUserByIdentity(nodeIdentity).getIdentifier();
+            if (! getGroup(nodeGroupIdentity).getUsers().contains(nodeIdentifier))
+                addUserToGroup(nodeIdentifier, nodeGroupIdentity);
+        }
     }
 
     @Override

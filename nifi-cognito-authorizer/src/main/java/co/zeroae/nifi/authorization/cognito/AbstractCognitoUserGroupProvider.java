@@ -38,7 +38,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
-    public static final String DEFAULT_NODE_IDENTITY = "CN=localhost, OU=NIFI";
     public static final String DEFAULT_NODE_GROUP = "Cluster";
 
     static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(AbstractCognitoUserGroupProvider.PROP_INITIAL_USER_IDENTITY_PREFIX + "\\S+");
@@ -94,10 +93,9 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
                 initialUserIdentities.add(IdentityMappingUtil.mapIdentity(entry.getValue(), identityMappings));
             }
         }
-        nodeIdentity = IdentityMappingUtil.mapIdentity(
-                getProperty(configurationContext, PROP_NODE_IDENTITY, DEFAULT_NODE_IDENTITY),
-                identityMappings
-        );
+        nodeIdentity = getProperty(configurationContext, PROP_NODE_IDENTITY, null);
+        if (nodeIdentity != null)
+            nodeIdentity = IdentityMappingUtil.mapIdentity(nodeIdentity, identityMappings);
 
         final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
                 IdentityMappingUtil.getGroupMappings(properties));
