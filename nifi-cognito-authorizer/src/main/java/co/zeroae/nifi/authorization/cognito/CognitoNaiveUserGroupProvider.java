@@ -66,7 +66,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             final User.Builder userBuilder = new User.Builder().identifier(response.username());
             response.userAttributes().forEach(attribute -> {
                 if (attribute.name().equals(IDENTITY_ATTRIBUTE))
-                    userBuilder.identity(attribute.name());
+                    userBuilder.identity(attribute.value());
             });
             return userBuilder.build();
         } catch (ResourceNotFoundException e) {
