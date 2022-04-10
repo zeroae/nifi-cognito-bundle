@@ -69,7 +69,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                     userBuilder.identity(attribute.value());
             });
             return userBuilder.build();
-        } catch (ResourceNotFoundException e) {
+        } catch (UserNotFoundException e) {
             return null;
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException("Error getting user: " + identifier, e);
