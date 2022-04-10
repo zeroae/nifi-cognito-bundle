@@ -60,6 +60,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .userPoolId(userPoolId)
                 .username(identifier)
                 .build();
+        watch.start();
         try {
             AdminGetUserResponse response = cognitoClient.adminGetUser(request);
             final User.Builder userBuilder = new User.Builder().identifier(response.username());
@@ -147,6 +148,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                     .name(group.description());
             getUsersInGroup(identifier).forEach(groupBuilder::addUser);
             return groupBuilder.build();
+        } catch (ResourceNotFoundException e) {
+            return null;
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {

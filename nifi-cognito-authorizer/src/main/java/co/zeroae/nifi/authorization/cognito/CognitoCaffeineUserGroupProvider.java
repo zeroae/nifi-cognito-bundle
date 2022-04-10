@@ -10,6 +10,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.GroupType;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.ListGroupsRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.ListUsersRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.UserType;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -20,27 +22,26 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
     // This caches the group names *only*
     // When it expires, we get pull for the groupNames again, and refresh the groupsCache
     LoadingCache<String, Set<GroupType>> groupTypeCache;
-
-    LoadingCache<String, Optional<User>> userByIdentityCache;
     LoadingCache<String, Optional<Group>> groupsCache;
+
+
+    LoadingCache<String, Set<UserType>> userTypeCache;
+    LoadingCache<String, Optional<User>> usersCache;
+    LoadingCache<String, Optional<User>> userByIdentityCache;
 
     @Override
     public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
         super.initialize(initializationContext);
+        // TODO: Use a Cache Spec String
         groupTypeCache = Caffeine.newBuilder()
                 .expireAfterWrite(1, TimeUnit.MINUTES)
                 .build(userPoolId -> cognitoClient.listGroupsPaginator(ListGroupsRequest.builder()
                         .userPoolId(userPoolId)
+                        .limit(pageSize)
                         .build())
                         .groups()
                         .stream()
                         .collect(Collectors.toSet())
-                );
-        // TODO: Use a Cache Spec String
-        userByIdentityCache = Caffeine.newBuilder()
-                .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(identity ->
-                    Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
                 );
         groupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
@@ -60,6 +61,38 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
                         return value.getIdentifier();
                     }
                 });
+
+        userTypeCache = Caffeine.newBuilder()
+                .expireAfterWrite(1, TimeUnit.MINUTES)
+                .build(userPoolId -> cognitoClient.listUsersPaginator(ListUsersRequest.builder()
+                                .userPoolId(userPoolId)
+                                .limit(pageSize)
+                                .build())
+                        .users()
+                        .stream()
+                        .collect(Collectors.toSet())
+                );
+        
+        userByIdentityCache = Caffeine.newBuilder()
+                .refreshAfterWrite(1, TimeUnit.MINUTES)
+                .build(identity ->
+                    Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
+                );
+        usersCache = Caffeine.newBuilder()
+                .refreshAfterWrite(1, TimeUnit.MINUTES)
+                .build(new CacheLoaderAll<String, User>() {
+                    @Override
+                    public Optional<User> load(@NonNull String key) {
+                        return Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUser(key));
+                    }
+
+                    @Override
+                    public Set<User> getAllValues() {return CognitoCaffeineUserGroupProvider.super.getUsers();}
+
+                    @Override
+                    public String getKey(User value) {return value.getIdentifier();}
+                });
+
     }
 
     @Override
@@ -78,6 +111,28 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
         Set<Group> rv = new HashSet<>();
         groupsCache.asMap().forEach((k, v) -> v.ifPresent(rv::add));
         return Collections.unmodifiableSet(rv);
+    }
+
+    @Override
+    public Group getGroup(String identifier) throws AuthorizationAccessException {
+        return Objects.requireNonNull(groupsCache.get(identifier)).orElse(null);
+    }
+
+    @Override
+    public Set<User> getUsers() throws AuthorizationAccessException {
+        Set<String> userNames = Objects.requireNonNull(userTypeCache.get(userPoolId))
+                .stream()
+                .map(UserType::username)
+                .collect(Collectors.toSet());
+        usersCache.getAll(userNames);
+        Set<User> rv = new HashSet<>();
+        usersCache.asMap().forEach((k,v ) -> v.ifPresent(rv::add));
+        return Collections.unmodifiableSet(rv);
+    }
+
+    @Override
+    public User getUser(String identifier) throws AuthorizationAccessException {
+        return Objects.requireNonNull(usersCache.get(identifier)).orElse(null);
     }
 
     @Override
