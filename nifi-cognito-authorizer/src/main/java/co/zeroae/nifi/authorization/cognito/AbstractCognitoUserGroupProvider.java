@@ -2,9 +2,12 @@ package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.UserGroupProvider;
+import org.apache.nifi.authorization.UserGroupProviderInitializationContext;
 import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
+import org.apache.nifi.authorization.util.IdentityMapping;
+import org.apache.nifi.authorization.util.IdentityMappingUtil;
 import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
@@ -20,41 +23,86 @@ import java.io.InputStream;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
-    public static final String USER_POOL_PROPERTY = "User Pool";
+    public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
+    public static final String PROP_USER_POOL_ID = "User Pool";
+    public static final String PROP_PAGE_SIZE = "Page Size";
+    public static final String PROP_INITIAL_USER_IDENTITY_PREFIX = "Initial User Identity ";
+    public static final String PROP_NODE_IDENTITY = "Node Identity";
+    public static final String PROP_NODE_GROUP = "Node Group";
+
     public static final String IDENTITY_ATTRIBUTE = "email";
 
-    public static final String PAGE_SIZE_PROPERTY = "Page Size";
     public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
+    public static final String DEFAULT_NODE_GROUP = "Cluster";
 
-    public static final String AWS_CREDENTIALS_FILE_PROPERTY = "AWS Credentials File";
-    private static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
-    private static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
+    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(AbstractCognitoUserGroupProvider.PROP_INITIAL_USER_IDENTITY_PREFIX + "\\S+");
+    static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
+    static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 
     public static final long MINIMUM_SYNC_INTERVAL_MILLISECONDS = 10_000;
+
+    NiFiProperties properties;
 
     CognitoIdentityProviderClient cognitoClient;
     String userPoolId;
     int pageSize;
 
+    Set<String> initialUserIdentities;
+    String nodeIdentity;
+    String nodeGroupIdentity;
+
+    @AuthorizerContext
+    public void setup(NiFiProperties properties) {
+        this.properties = properties;
+    }
+
+    @Override
+    public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
+
+    }
+
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
-        pageSize = Integer.parseInt(getProperty(configurationContext, PAGE_SIZE_PROPERTY, DEFAULT_PAGE_SIZE));
+        pageSize = Integer.parseInt(getProperty(configurationContext, PROP_PAGE_SIZE, DEFAULT_PAGE_SIZE));
         if (pageSize > MAX_PAGE_SIZE)
             throw new AuthorizerCreationException(String.format("Max page size for Cognito is %d.", MAX_PAGE_SIZE));
 
-        userPoolId = getProperty(configurationContext, USER_POOL_PROPERTY, null);
+        userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
             throw new AuthorizerCreationException("User Pool must be valid.");
 
         try {
-            final String credentialsFile = getProperty(configurationContext, AWS_CREDENTIALS_FILE_PROPERTY, null);
+            final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);
             cognitoClient = configureClient(credentialsFile);
         } catch (IOException e) {
             throw new AuthorizerCreationException(e.getMessage(), e);
         }
+
+        // extract any new identities
+        final List<IdentityMapping> identityMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getIdentityMappings(properties));
+        initialUserIdentities = new HashSet<>();
+        for (Map.Entry<String,String> entry : configurationContext.getProperties().entrySet()) {
+            Matcher matcher = INITIAL_USER_IDENTITY_PATTERN.matcher(entry.getKey());
+            if (matcher.matches() && !StringUtils.isBlank(entry.getValue())) {
+                initialUserIdentities.add(IdentityMappingUtil.mapIdentity(entry.getValue(), identityMappings));
+            }
+        }
+        nodeIdentity = getProperty(configurationContext, PROP_NODE_IDENTITY, null);
+        if (nodeIdentity != null)
+            nodeIdentity = IdentityMappingUtil.mapIdentity(nodeIdentity, identityMappings);
+
+        final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getGroupMappings(properties));
+        nodeGroupIdentity = IdentityMappingUtil.mapIdentity(
+                getProperty(configurationContext, PROP_NODE_GROUP, DEFAULT_NODE_GROUP),
+                groupMappings
+        ).replace(" ", "_");
     }
 
     CognitoIdentityProviderClient configureClient(final String awsCredentialsFilename) throws IOException {

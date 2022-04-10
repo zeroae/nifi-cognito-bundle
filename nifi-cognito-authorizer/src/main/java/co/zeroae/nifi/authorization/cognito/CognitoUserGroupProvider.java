@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvider {
+public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
 
     // This caches the group names *only*
     // When it expires, we get pull for the groupNames again, and refresh the groupsCache
@@ -37,12 +37,12 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
                 .build(new CacheLoaderAll<String, Group>() {
                     @Override
                     public Optional<Group> load(@NonNull String key) {
-                        return Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getGroup(key));
+                        return Optional.ofNullable(CognitoUserGroupProvider.super.getGroup(key));
                     }
 
                     @Override
                     public Set<Group> getAllValues() {
-                        return CognitoCaffeineUserGroupProvider.super.getGroups();
+                        return CognitoUserGroupProvider.super.getGroups();
                     }
 
                     @Override
@@ -64,21 +64,21 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
         userByIdentityCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(identity ->
-                        Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUserByIdentity(identity))
+                        Optional.ofNullable(CognitoUserGroupProvider.super.getUserByIdentity(identity))
                 );
         userAndGroupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(CognitoCaffeineUserGroupProvider.super::getUserAndGroups);
+                .build(CognitoUserGroupProvider.super::getUserAndGroups);
         usersCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(new CacheLoaderAll<String, User>() {
                     @Override
                     public Optional<User> load(@NonNull String key) {
-                        return Optional.ofNullable(CognitoCaffeineUserGroupProvider.super.getUser(key));
+                        return Optional.ofNullable(CognitoUserGroupProvider.super.getUser(key));
                     }
 
                     @Override
-                    public Set<User> getAllValues() {return CognitoCaffeineUserGroupProvider.super.getUsers();}
+                    public Set<User> getAllValues() {return CognitoUserGroupProvider.super.getUsers();}
 
                     @Override
                     public String getKey(User value) {return value.getIdentifier();}
@@ -119,6 +119,39 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
     }
 
     @Override
+    public Group addGroup(Group group) throws AuthorizationAccessException {
+        final Group rv = super.addGroup(group);
+        groupsCache.invalidate(group.getIdentifier());
+        return rv;
+    }
+
+    @Override
+    public Group deleteGroup(Group group) throws AuthorizationAccessException {
+        try {
+            return super.deleteGroup(group);
+        } finally {
+            groupsCache.invalidate(group.getIdentifier());
+        }
+    }
+
+    @Override
+    protected void addUserToGroup(String userIdentifier, String groupIdentifier) {
+        super.addUserToGroup(userIdentifier, groupIdentifier);
+        groupsCache.invalidate(groupIdentifier);
+        userAndGroupsCache.invalidate(getUser(userIdentifier).getIdentity());
+    }
+
+    @Override
+    protected void removeUserFromGroup(String userIdentifier, String groupIdentifier) {
+        try {
+            super.removeUserFromGroup(userIdentifier, groupIdentifier);
+        } finally {
+            groupsCache.invalidate(groupIdentifier);
+            userAndGroupsCache.invalidate(getUser(userIdentifier).getIdentity());
+        }
+    }
+
+    @Override
     public Set<User> getUsers() throws AuthorizationAccessException {
         Set<String> userNames = Objects.requireNonNull(userTypeCache.get(userPoolId))
                 .stream()
@@ -133,6 +166,28 @@ public class CognitoCaffeineUserGroupProvider extends CognitoNaiveUserGroupProvi
     @Override
     public User getUser(String identifier) throws AuthorizationAccessException {
         return Objects.requireNonNull(usersCache.get(identifier)).orElse(null);
+    }
+
+    @Override
+    public User addUser(User user) throws AuthorizationAccessException {
+        final User rv = super.addUser(user);
+        usersCache.invalidate(user.getIdentifier());
+        userByIdentityCache.invalidate(user.getIdentity());
+        userAndGroupsCache.invalidate(user.getIdentity());
+        return rv;
+    }
+
+    @Override
+    public User deleteUser(User user) throws AuthorizationAccessException {
+        Set<Group> userGroups = getUserAndGroups(user.getIdentity()).getGroups();
+        try {
+            return super.deleteUser(user);
+        } finally {
+            usersCache.invalidate(user.getIdentifier());
+            userByIdentityCache.invalidate(user.getIdentity());
+            userAndGroupsCache.invalidate(user.getIdentity());
+            groupsCache.invalidateAll(userGroups.stream().map(Group::getIdentifier).collect(Collectors.toSet()));
+        }
     }
 
     @Override
