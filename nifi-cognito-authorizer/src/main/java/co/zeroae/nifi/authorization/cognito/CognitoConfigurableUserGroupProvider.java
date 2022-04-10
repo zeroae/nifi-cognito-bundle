@@ -1,20 +1,121 @@
 package co.zeroae.nifi.authorization.cognito;
 
+import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.ConfigurableUserGroupProvider;
 import org.apache.nifi.authorization.Group;
 import org.apache.nifi.authorization.User;
+import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
+import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
+import org.apache.nifi.authorization.util.IdentityMapping;
+import org.apache.nifi.authorization.util.IdentityMappingUtil;
+import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGroupProvider implements ConfigurableUserGroupProvider {
     private final static Logger logger = LoggerFactory.getLogger(CognitoConfigurableUserGroupProvider.class);
+
+    static final String PROP_INITIAL_USER_IDENTITY_PREFIX = "Initial User Identity ";
+    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(PROP_INITIAL_USER_IDENTITY_PREFIX + "\\S+");
+
+    static final String NODE_IDENTITY_PROPERTY = "Node Identity";
+    static final String DEFAULT_NODE_IDENTITY = "CN=localhost, OU=NIFI";
+
+    static final String NODE_GROUP_PROPERTY = "Node Group";
+    static final String DEFAULT_NODE_GROUP = "Cluster";
+
+    NiFiProperties properties;
+
+    Set<String> initialUserIdentities;
+    List<IdentityMapping> identityMappings;
+    List<IdentityMapping> groupMappings;
+
+    @AuthorizerContext
+    public void setup(NiFiProperties properties) {
+        this.properties = properties;
+    }
+
+    @Override
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
+        super.onConfigured(configurationContext);
+
+        // extract the identity and group mappings from nifi.properties if any are provided
+        identityMappings = Collections.unmodifiableList(IdentityMappingUtil.getIdentityMappings(properties));
+        groupMappings = Collections.unmodifiableList(IdentityMappingUtil.getGroupMappings(properties));
+
+        String nodeIdentity = IdentityMappingUtil.mapIdentity(
+                getProperty(configurationContext, NODE_IDENTITY_PROPERTY, DEFAULT_NODE_IDENTITY),
+                identityMappings);
+        String nodeGroupIdentifier = IdentityMappingUtil.mapIdentity(
+                getProperty(configurationContext, NODE_GROUP_PROPERTY, DEFAULT_NODE_GROUP),
+                groupMappings
+        ).replace(" ", "_");
+
+        // extract any new identities
+        initialUserIdentities = new HashSet<>();
+        initialUserIdentities.add(nodeIdentity);
+        for (Map.Entry<String,String> entry : configurationContext.getProperties().entrySet()) {
+            Matcher matcher = INITIAL_USER_IDENTITY_PATTERN.matcher(entry.getKey());
+            if (matcher.matches() && !StringUtils.isBlank(entry.getValue())) {
+                initialUserIdentities.add(IdentityMappingUtil.mapIdentity(entry.getValue(), identityMappings));
+            }
+        }
+        // Use FailSafe https://github.com/failsafe-lib/failsafe
+        initialUserIdentities.forEach(identity -> {
+            int retry = 10;
+            while (getUserByIdentity(identity) == null && retry > 0) {
+                try {
+                    try {
+                        addUser(new User.Builder().identifierGenerateRandom().identity(identity).build());
+                    } catch (IllegalStateException ignored) {
+                    } catch (AuthorizationAccessException e) {
+                        logger.warn(String.format("Error creating Initial User Identity '%s'. Retrying %d times",
+                                identity, retry));
+                        wait(200);
+                    } finally {
+                        retry--;
+                    }
+                } catch (InterruptedException e) {
+                    throw new AuthorizerCreationException(e.getMessage(), e);
+                }
+            }
+        });
+
+        Set<String> initialGroupNames = new HashSet<>();
+        initialGroupNames.add(nodeGroupIdentifier);
+        initialGroupNames.forEach(identifier -> {
+            int retry = 10;
+            while (getGroup(identifier) == null && retry > 0) {
+                try {
+                    try {
+                        addGroup(new Group.Builder().name(identifier).identifier(identifier).build());
+                    } catch (IllegalStateException ignored) {
+                    } catch (AuthorizationAccessException e) {
+                        logger.warn(String.format("Error creating Group '%s'. Retrying %d more times",
+                                identifier, retry));
+                        wait(200);
+                    } finally{
+                        retry--;
+                    }
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        final String nodeIdentifier = getUserByIdentity(nodeIdentity).getIdentifier();
+        if (! getGroup(nodeGroupIdentifier).getUsers().contains(nodeIdentifier))
+            addUserToGroup(nodeIdentifier, nodeGroupIdentifier);
+    }
 
     @Override
     public String getFingerprint() throws AuthorizationAccessException {
@@ -138,22 +239,7 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
         final Set<String> usersToRemove = new HashSet<>(current.getUsers());
         usersToRemove.removeAll(group.getUsers());
 
-        usersToAdd.forEach(user -> {
-            try {
-                cognitoClient.adminAddUserToGroup(AdminAddUserToGroupRequest.builder()
-                        .userPoolId(userPoolId)
-                        .username(user)
-                        .groupName(current.getIdentifier())
-                        .build());
-                groupsCache.invalidate(current.getIdentifier());
-            } catch (UserNotFoundException e) {
-                logger.warn(String.format("Not adding '%s' to group '%s'. User was not found in Cognito.",
-                        user, current.getName()));
-            } catch (CognitoIdentityProviderException e) {
-                logger.error(String.format("Error adding user %s to group %s", user, current.getName()), e);
-                throw new AuthorizationAccessException(e.getMessage(), e);
-            }
-        });
+        usersToAdd.forEach(user -> addUserToGroup(user, current.getIdentifier()));
         usersToRemove.forEach(user -> {
             try {
                 cognitoClient.adminRemoveUserFromGroup(AdminRemoveUserFromGroupRequest.builder()
@@ -173,6 +259,24 @@ public class CognitoConfigurableUserGroupProvider extends CognitoCaffeineUserGro
             }
         });
         return getGroup(group.getIdentifier());
+    }
+
+    private void addUserToGroup(String userIdentifier, String groupIdentifier) {
+        try {
+            cognitoClient.adminAddUserToGroup(AdminAddUserToGroupRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(userIdentifier)
+                    .groupName(groupIdentifier)
+                    .build());
+            groupsCache.invalidate(groupIdentifier);
+            userAndGroupsCache.invalidate(getUser(userIdentifier).getIdentity());
+        } catch (UserNotFoundException e) {
+            logger.warn(String.format("Not adding '%s' to group '%s'. User was not found in Cognito.",
+                    userIdentifier, groupIdentifier));
+        } catch (CognitoIdentityProviderException e) {
+            logger.error(String.format("Error adding user %s to group %s", userIdentifier, groupIdentifier), e);
+            throw new AuthorizationAccessException(e.getMessage(), e);
+        }
     }
 
     @Override
