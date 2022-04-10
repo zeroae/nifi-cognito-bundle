@@ -2,10 +2,12 @@ package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.UserGroupProvider;
+import org.apache.nifi.authorization.UserGroupProviderInitializationContext;
 import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
 import org.apache.nifi.authorization.util.IdentityMapping;
+import org.apache.nifi.authorization.util.IdentityMappingUtil;
 import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
@@ -21,6 +23,7 @@ import java.io.InputStream;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
@@ -49,13 +52,19 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     CognitoIdentityProviderClient cognitoClient;
     String userPoolId;
     int pageSize;
+
     Set<String> initialUserIdentities;
-    List<IdentityMapping> identityMappings;
-    List<IdentityMapping> groupMappings;
+    String nodeIdentity;
+    String nodeGroupIdentity;
 
     @AuthorizerContext
     public void setup(NiFiProperties properties) {
         this.properties = properties;
+    }
+
+    @Override
+    public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
+
     }
 
     @Override
@@ -74,6 +83,28 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         } catch (IOException e) {
             throw new AuthorizerCreationException(e.getMessage(), e);
         }
+
+        // extract any new identities
+        final List<IdentityMapping> identityMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getIdentityMappings(properties));
+        initialUserIdentities = new HashSet<>();
+        for (Map.Entry<String,String> entry : configurationContext.getProperties().entrySet()) {
+            Matcher matcher = INITIAL_USER_IDENTITY_PATTERN.matcher(entry.getKey());
+            if (matcher.matches() && !StringUtils.isBlank(entry.getValue())) {
+                initialUserIdentities.add(IdentityMappingUtil.mapIdentity(entry.getValue(), identityMappings));
+            }
+        }
+        nodeIdentity = IdentityMappingUtil.mapIdentity(
+                getProperty(configurationContext, PROP_NODE_IDENTITY, DEFAULT_NODE_IDENTITY),
+                identityMappings
+        );
+
+        final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getGroupMappings(properties));
+        nodeGroupIdentity = IdentityMappingUtil.mapIdentity(
+                getProperty(configurationContext, PROP_NODE_GROUP, DEFAULT_NODE_GROUP),
+                groupMappings
+        ).replace(" ", "_");
     }
 
     CognitoIdentityProviderClient configureClient(final String awsCredentialsFilename) throws IOException {

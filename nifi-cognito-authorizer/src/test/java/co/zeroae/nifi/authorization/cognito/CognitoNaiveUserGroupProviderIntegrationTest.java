@@ -30,15 +30,15 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 
-public class CognitoCachedUserGroupProviderIntegrationTest {
-    private static final Logger logger = LoggerFactory.getLogger(CognitoCachedUserGroupProviderIntegrationTest.class);
+public class CognitoNaiveUserGroupProviderIntegrationTest {
+    private static final Logger logger = LoggerFactory.getLogger(CognitoNaiveUserGroupProviderIntegrationTest.class);
 
     private static final String ADMIN_IDENTITY = "admin@nifi.zeroae.co";
     private static final String NODE1_IDENTITY = "nifi+n1@nifi.zeroae.co";
     private static final String NODE2_IDENTITY = "nifi+n2@nifi.zeroae.co";
 
     private AuthorizerConfigurationContext authContext = Mockito.mock(AuthorizerConfigurationContext.class);
-    private CognitoCachedUserGroupProvider testingProvider;
+    private CognitoNaiveUserGroupProvider testingProvider;
     private UserGroupProviderInitializationContext initContext;
 
     static CognitoIdentityProviderClient client;
@@ -138,11 +138,11 @@ public class CognitoCachedUserGroupProviderIntegrationTest {
         authContext = Mockito.mock(AuthorizerConfigurationContext.class);
         initContext = Mockito.mock(UserGroupProviderInitializationContext.class);
 
-        Mockito.when(authContext.getProperty(Mockito.eq(CognitoCachedUserGroupProvider.USER_POOL_PROPERTY)))
+        Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_USER_POOL_ID)))
                 .thenReturn(new MockPropertyValue(userPool.id()));
     }
     private void setupTestingProvider() {
-        testingProvider = new CognitoCachedUserGroupProvider();
+        testingProvider = new CognitoNaiveUserGroupProvider();
         try {
             testingProvider.initialize(initContext);
             testingProvider.onConfigured(authContext);
@@ -162,7 +162,7 @@ public class CognitoCachedUserGroupProviderIntegrationTest {
     @Test
     public void testGroupPagination() {
         final int pageSize = 1;
-        Mockito.when(authContext.getProperty(Mockito.eq(CognitoCachedUserGroupProvider.PAGE_SIZE_PROPERTY)))
+        Mockito.when(authContext.getProperty(Mockito.eq(CognitoNaiveUserGroupProvider.PROP_PAGE_SIZE)))
                 .thenReturn(new MockPropertyValue(Integer.toString(pageSize)));
 
         setupTestingProvider();
@@ -173,7 +173,7 @@ public class CognitoCachedUserGroupProviderIntegrationTest {
     @Test
     public void testUserPagination() {
         final int pageSize = 1;
-        Mockito.when(authContext.getProperty(Mockito.eq(CognitoCachedUserGroupProvider.PAGE_SIZE_PROPERTY)))
+        Mockito.when(authContext.getProperty(Mockito.eq(CognitoNaiveUserGroupProvider.PROP_PAGE_SIZE)))
                 .thenReturn(new MockPropertyValue(Integer.toString(pageSize)));
 
         setupTestingProvider();

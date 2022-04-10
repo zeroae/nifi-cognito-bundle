@@ -14,4 +14,3 @@
 # limitations under the License.
 co.zeroae.nifi.authorization.cognito.CognitoNaiveUserGroupProvider
 co.zeroae.nifi.authorization.cognito.CognitoCaffeineUserGroupProvider
-co.zeroae.nifi.authorization.cognito.CognitoConfigurableUserGroupProvider
