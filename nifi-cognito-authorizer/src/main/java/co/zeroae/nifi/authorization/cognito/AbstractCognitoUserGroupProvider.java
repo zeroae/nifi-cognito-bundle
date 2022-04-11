@@ -1,6 +1,8 @@
 package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.AuthorizerConfigurationContext;
+import org.apache.nifi.authorization.User;
+import org.apache.nifi.authorization.Group;
 import org.apache.nifi.authorization.UserGroupProvider;
 import org.apache.nifi.authorization.UserGroupProviderInitializationContext;
 import org.apache.nifi.authorization.annotation.AuthorizerContext;
@@ -23,24 +25,29 @@ import java.io.InputStream;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     public static final String PROP_USER_POOL_ID = "User Pool";
     public static final String PROP_PAGE_SIZE = "Page Size";
-    public static final String PROP_INITIAL_USER_IDENTITY_PREFIX = "Initial User Identity ";
-    public static final String PROP_NODE_IDENTITY = "Node Identity";
-    public static final String PROP_NODE_GROUP = "Node Group";
+    public static final String PROP_ADD_USER_PREFIX = "Add User";
+    public static final String PROP_ADD_GROUP_PREFIX = "Add Group";
+    public static final String PROP_ADD_USERS_TO_GROUP_PREFIX = "Add Users To Group";
 
     public static final String IDENTITY_ATTRIBUTE = "email";
 
     public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
-    public static final String DEFAULT_NODE_GROUP = "Cluster";
 
-    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(AbstractCognitoUserGroupProvider.PROP_INITIAL_USER_IDENTITY_PREFIX + "\\S+");
+    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(
+            PROP_ADD_USER_PREFIX + " (?<identifier>\\S+)");
+    static final Pattern INITIAL_GROUP_IDENTITY_PATTERN = Pattern.compile(
+            PROP_ADD_GROUP_PREFIX + " (?<identifier>\\S+)");
+    static final Pattern INITIAL_GROUP_MEMBERS_PATTERN = Pattern.compile(
+            PROP_ADD_USERS_TO_GROUP_PREFIX + " (?<identifier>\\S+)");
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
     static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 
@@ -52,9 +59,8 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     String userPoolId;
     int pageSize;
 
-    Set<String> initialUserIdentities;
-    String nodeIdentity;
-    String nodeGroupIdentity;
+    Set<User> initialUsers;
+    Set<Group> initialGroups;
 
     @AuthorizerContext
     public void setup(NiFiProperties properties) {
@@ -63,7 +69,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     @Override
     public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
-
     }
 
     @Override
@@ -86,23 +91,40 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         // extract any new identities
         final List<IdentityMapping> identityMappings = Collections.unmodifiableList(
                 IdentityMappingUtil.getIdentityMappings(properties));
-        initialUserIdentities = new HashSet<>();
-        for (Map.Entry<String,String> entry : configurationContext.getProperties().entrySet()) {
-            Matcher matcher = INITIAL_USER_IDENTITY_PATTERN.matcher(entry.getKey());
-            if (matcher.matches() && !StringUtils.isBlank(entry.getValue())) {
-                initialUserIdentities.add(IdentityMappingUtil.mapIdentity(entry.getValue(), identityMappings));
-            }
-        }
-        nodeIdentity = getProperty(configurationContext, PROP_NODE_IDENTITY, null);
-        if (nodeIdentity != null)
-            nodeIdentity = IdentityMappingUtil.mapIdentity(nodeIdentity, identityMappings);
-
         final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
                 IdentityMappingUtil.getGroupMappings(properties));
-        nodeGroupIdentity = IdentityMappingUtil.mapIdentity(
-                getProperty(configurationContext, PROP_NODE_GROUP, DEFAULT_NODE_GROUP),
-                groupMappings
-        ).replace(" ", "_");
+
+        final Map<String, User> userMap = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_USER_IDENTITY_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier"), new User.Builder()
+                        .identifier(e.getKey().group("identifier"))
+                        .identity(IdentityMappingUtil.mapIdentity(e.getValue().trim(), identityMappings))
+                        .build()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        initialUsers = Collections.unmodifiableSet(new HashSet<>(userMap.values()));
+
+        final Map<String, Group.Builder> groupMap = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_IDENTITY_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier"), new Group.Builder()
+                        .identifier(e.getKey().group("identifier"))
+                        .name(IdentityMappingUtil.mapIdentity(e.getValue(), groupMappings))))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        initialGroups = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_MEMBERS_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier"), e.getValue()))
+                .filter(e -> groupMap.containsKey(e.getKey()))
+                .map(e -> groupMap.get(e.getKey())
+                        .addUsers(Stream.of(e.getValue().split(","))
+                                .map(String::trim)
+                                .filter(userMap::containsKey)
+                                .collect(Collectors.toSet()))
+                        .build())
+                .collect(Collectors.toSet());
+        initialGroups = Collections.unmodifiableSet(initialGroups);
     }
 
     CognitoIdentityProviderClient configureClient(final String awsCredentialsFilename) throws IOException {
