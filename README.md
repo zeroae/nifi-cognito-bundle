@@ -20,27 +20,31 @@ NiFi Authorization Extension using AWS Cognito
    
             - User Pool - The Cognito User Pool Id where to store the Users and Groups
    
-            - Initial Admin Identity [unique key] - The identity of an initial user to populate the backend.
-                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the initial admin identity,
-                so the value should be the unmapped identity. This identity must be found in the configured User Group Provider.
+            - Add User <user-uuid> - The identity of an initial user to populate the backend.
+                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the user identity,
+                so the value should be the unmapped identity.
+           
+            - Add Group <group-uuid> - The identity of an initial group to populate the backend.
+                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the group identity,
+                so the value should be the unmapped identity.
    
-            - Node Identity - The identity of *this* node. A user with this identity will be created on the backend.
-                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the initial admin identity,
-                so the value should be the unmapped identity. This identity must be found in the configured User Group Provider.
-   
-            - Node Group - The name of the Node Group for this cluster. The Node Identity from above will be added to this group.
-                The Node Group name must not include spaces.
-
+            - Add Users To Group <group-uuid> - A comma separated list of user identifiers to add to the given group.
+                NOTE: The User Ids *must* be one of the 'Add User <user-uuid>' entries.
         -->
         <userGroupProvider>
             <identifier>cognito-configurable-user-group-provider</identifier>
             <class>co.zeroae.nifi.authorization.cognito.CognitoUserGroupProvider</class>
             <property name="AWS Credentials File">./conf/bootstrap-aws.conf</property>
-            <property name="User Pool">COGNITO-USER-POOL-ID</property>
+            <property name="User Pool">us-east-1_XXXXXXX</property>
             <property name="Page Size">50</property>
-            <property name="Initial User Identity 1">CN=administrator, OU=NIFI</property>
-            <property name="Node Identity 1">CN=localhost, OU=NIFI</property>
-            <property name="Node Group">Cluster</property>
+            <property name="Add User <UUID:1>">CN=administrator, OU=NIFI</property>
+            <property name="Add User <UUID:2>">CN=localhost, OU=NIFI</property>
+            <property name="Add User <UUID:3>">CN=localhost2, OU=NIFI</property>
+            <property name="Add Group <UUID:4>">Cluster</property>
+            <property name="Add Users To Group <UUID:4>">
+                UUID:2,
+                UUID:3
+            </property>
         </userGroupProvider>
         <accessPolicyProvider>
             <!-- ... -->

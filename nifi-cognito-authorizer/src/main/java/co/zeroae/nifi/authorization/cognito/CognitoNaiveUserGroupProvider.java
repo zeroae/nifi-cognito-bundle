@@ -1,5 +1,8 @@
 package co.zeroae.nifi.authorization.cognito;
 
+import dev.failsafe.Failsafe;
+import dev.failsafe.Fallback;
+import dev.failsafe.RetryPolicy;
 import org.apache.nifi.authorization.*;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
@@ -10,8 +13,10 @@ import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -22,58 +27,36 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
 
-        // Use FailSafe https://github.com/failsafe-lib/failsafe
-        Set<String> initialIdentities = new HashSet<>(initialUserIdentities);
-        if (nodeIdentity  != null)
-            initialIdentities.add(nodeIdentity);
-        initialIdentities.forEach(identity -> {
-            int retry = 10;
-            while (getUserByIdentity(identity) == null && retry > 0) {
-                try {
-                    try {
-                        addUser(new User.Builder().identifierGenerateRandom().identity(identity).build());
-                    } catch (IllegalStateException ignored) {
-                    } catch (AuthorizationAccessException e) {
-                        logger.warn(String.format("Error creating Initial User Identity '%s'. Retrying %d times",
-                                identity, retry));
-                        wait(200);
-                    } finally {
-                        retry--;
-                    }
-                } catch (InterruptedException e) {
-                    throw new AuthorizerCreationException(e.getMessage(), e);
-                }
-            }
-        });
+        RetryPolicy<Object> nullRetryPolicy = RetryPolicy.builder()
+                .withMaxAttempts(10)
+                .withBackoff(Duration.ofMillis(100), Duration.ofSeconds(5))
+                .handleResult(null)
+                .abortOn(IllegalStateException.class)
+                .build();
 
-        Set<String> initialGroupNames = new HashSet<>();
-        if (nodeGroupIdentity != null)
-            initialGroupNames.add(nodeGroupIdentity);
-        initialGroupNames.forEach(identifier -> {
-            int retry = 10;
-            while (getGroup(identifier) == null && retry > 0) {
-                try {
-                    try {
-                        addGroup(new Group.Builder().name(identifier).identifier(identifier).build());
-                    } catch (IllegalStateException ignored) {
-                    } catch (AuthorizationAccessException e) {
-                        logger.warn(String.format("Error creating Group '%s'. Retrying %d more times",
-                                identifier, retry));
-                        wait(200);
-                    } finally{
-                        retry--;
-                    }
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                }
-            }
-        });
+        initialUserIdentities.stream()
+                .filter(user -> getUser(user.getIdentifier()) == null)
+                .forEach(user -> {
+                    final Fallback<Object> fallback = Fallback.of(() -> getUser(user.getIdentifier()));
+                    Objects.requireNonNull(
+                            Failsafe.with(fallback)
+                                    .compose(nullRetryPolicy)
+                                    .get(() -> addUser(user)),
+                    "Could not initialize identity " + user);
+                });
 
-        if (nodeIdentity != null && nodeGroupIdentity != null) {
-            final String nodeIdentifier = getUserByIdentity(nodeIdentity).getIdentifier();
-            if (! getGroup(nodeGroupIdentity).getUsers().contains(nodeIdentifier))
-                addUserToGroup(nodeIdentifier, nodeGroupIdentity);
-        }
+        initialGroupIdentities.stream()
+                .filter(group -> getGroup(group.getIdentifier()) == null)
+                .forEach(group -> {
+                    final Fallback<Object> fallback = Fallback.of(() -> getGroup(group.getIdentifier()));
+                    Objects.requireNonNull(
+                            Failsafe.with(fallback)
+                                    .compose(nullRetryPolicy)
+                                    .get(() -> addGroup(group, false)),
+                    "Could not initialize group " + group);
+                });
+
+        initialGroupMembers.forEach((group, users) -> users.forEach(user -> addUserToGroup(user, group)));
     }
 
     @Override
@@ -317,8 +300,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .build();
         try {
             cognitoClient.adminCreateUser(request);
-        } catch (AliasExistsException e) {
-            throw new IllegalStateException(e);
+        } catch (AliasExistsException | UsernameExistsException e) {
+            throw new IllegalStateException(e.getMessage(), e);
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         }
@@ -354,6 +337,10 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
 
     @Override
     public Group addGroup(Group group) throws AuthorizationAccessException {
+        return addGroup(group, true);
+    }
+
+    protected Group addGroup(Group group, boolean setUsers) {
         CreateGroupRequest request = CreateGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
@@ -367,7 +354,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             logger.error("Error creating group: " + group.getName());
             throw new AuthorizationAccessException("Error creating group: " + group.getName(), e);
         }
-        return updateGroup(group);
+        return setUsers ? updateGroup(group) : group;
     }
 
     @Override
