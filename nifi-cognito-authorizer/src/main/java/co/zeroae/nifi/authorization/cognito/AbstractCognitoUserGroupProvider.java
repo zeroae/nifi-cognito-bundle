@@ -59,9 +59,8 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     String userPoolId;
     int pageSize;
 
-    Set<User> initialUserIdentities;
-    Set<Group> initialGroupIdentities;
-    Map<String, Set<String>> initialGroupMembers;
+    Set<User> initialUsers;
+    Set<Group> initialGroups;
 
     @AuthorizerContext
     public void setup(NiFiProperties properties) {
@@ -70,7 +69,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     @Override
     public void initialize(UserGroupProviderInitializationContext initializationContext) throws AuthorizerCreationException {
-
     }
 
     @Override
@@ -104,28 +102,29 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
                         .identity(IdentityMappingUtil.mapIdentity(e.getValue().trim(), identityMappings))
                         .build()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        initialUserIdentities = new HashSet<>(userMap.values());
+        initialUsers = Collections.unmodifiableSet(new HashSet<>(userMap.values()));
 
-        final Map<String, Group> groupMap = configurationContext.getProperties().entrySet().stream()
+        final Map<String, Group.Builder> groupMap = configurationContext.getProperties().entrySet().stream()
                 .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_IDENTITY_PATTERN.matcher(e.getKey()), e.getValue()))
                 .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier"), new Group.Builder()
                         .identifier(e.getKey().group("identifier"))
-                        .name(IdentityMappingUtil.mapIdentity(e.getValue(), groupMappings))
-                        .build()))
+                        .name(IdentityMappingUtil.mapIdentity(e.getValue(), groupMappings))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        initialGroupIdentities = new HashSet<>(groupMap.values());
 
-        initialGroupMembers = configurationContext.getProperties().entrySet().stream()
+        initialGroups = configurationContext.getProperties().entrySet().stream()
                 .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_MEMBERS_PATTERN.matcher(e.getKey()), e.getValue()))
                 .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier"), e.getValue()))
                 .filter(e -> groupMap.containsKey(e.getKey()))
-                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), Stream.of(e.getValue().split(","))
-                        .map(String::trim)
-                        .filter(userMap::containsKey)
-                        .collect(Collectors.toSet())))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                .map(e -> groupMap.get(e.getKey())
+                        .addUsers(Stream.of(e.getValue().split(","))
+                                .map(String::trim)
+                                .filter(userMap::containsKey)
+                                .collect(Collectors.toSet()))
+                        .build())
+                .collect(Collectors.toSet());
+        initialGroups = Collections.unmodifiableSet(initialGroups);
     }
 
     CognitoIdentityProviderClient configureClient(final String awsCredentialsFilename) throws IOException {

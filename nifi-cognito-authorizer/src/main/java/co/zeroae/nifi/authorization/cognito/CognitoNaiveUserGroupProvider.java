@@ -34,10 +34,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .abortOn(IllegalStateException.class)
                 .build();
 
-        initialUserIdentities.stream()
+        initialUsers.stream()
                 .filter(user -> getUser(user.getIdentifier()) == null)
                 .forEach(user -> {
-                    final Fallback<Object> fallback = Fallback.of(() -> getUser(user.getIdentifier()));
+                    // Fallback ensures upstream User matches the local one.
+                    final Fallback<Object> fallback = Fallback.of(() -> updateUser(user));
                     Objects.requireNonNull(
                             Failsafe.with(fallback)
                                     .compose(nullRetryPolicy)
@@ -45,18 +46,21 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                     "Could not initialize identity " + user);
                 });
 
-        initialGroupIdentities.stream()
+        initialGroups.stream()
                 .filter(group -> getGroup(group.getIdentifier()) == null)
                 .forEach(group -> {
+                    // Fallback only gets the current group, no membership updates.
                     final Fallback<Object> fallback = Fallback.of(() -> getGroup(group.getIdentifier()));
                     Objects.requireNonNull(
                             Failsafe.with(fallback)
                                     .compose(nullRetryPolicy)
                                     .get(() -> addGroup(group, false)),
                     "Could not initialize group " + group);
+                    group.getUsers().forEach(user ->
+                            Failsafe.with(nullRetryPolicy)
+                                    .run(() -> addUserToGroup(user, group.getIdentifier()))
+                    );
                 });
-
-        initialGroupMembers.forEach((group, users) -> users.forEach(user -> addUserToGroup(user, group)));
     }
 
     @Override
