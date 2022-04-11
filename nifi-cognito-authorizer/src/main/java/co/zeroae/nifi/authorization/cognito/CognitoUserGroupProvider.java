@@ -1,5 +1,6 @@
 package co.zeroae.nifi.authorization.cognito;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -15,14 +16,17 @@ import software.amazon.awssdk.services.cognitoidentityprovider.model.UserType;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
 
-    // This caches the group names *only*
-    // When it expires, we get pull for the groupNames again, and refresh the groupsCache
+    // groupTypeCache is looking for names only
+    // When it expires, we refresh the groupsCache
     LoadingCache<String, Set<GroupType>> groupTypeCache;
     LoadingCache<String, Optional<Group>> groupsCache;
 
+    // userTypeCache is looking for names only
+    // When it expires, we pull the usersCache, byIdentty and userAndGroups
     LoadingCache<String, Set<UserType>> userTypeCache;
     LoadingCache<String, Optional<User>> usersCache;
     LoadingCache<String, Optional<User>> userByIdentityCache;
@@ -96,6 +100,15 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
     }
 
     @Override
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
+        super.onConfigured(configurationContext);
+        Stream.of(
+                groupTypeCache, groupsCache,
+                userTypeCache, usersCache, userByIdentityCache, userAndGroupsCache
+        ).forEachOrdered(Cache::invalidateAll);
+    }
+
+    @Override
     public User getUserByIdentity(String identity) throws AuthorizationAccessException {
         return Objects.requireNonNull(userByIdentityCache.get(identity)).orElse(null);
     }
@@ -123,6 +136,13 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
         final Group rv = super.addGroup(group);
         groupsCache.invalidate(group.getIdentifier());
         return rv;
+    }
+
+    @Override
+    public Group updateGroup(Group group) throws AuthorizationAccessException {
+        // Invalidate before updating to ensure we have the latest version in the cache.
+        groupsCache.invalidate(group.getIdentifier());
+        return super.updateGroup(group);
     }
 
     @Override
@@ -195,10 +215,6 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
         return userAndGroupsCache.get(identity);
     }
 
-    @Override
-    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
-        super.onConfigured(configurationContext);
-    }
 
     private abstract static class CacheLoaderAll<K, V> implements CacheLoader<K, Optional<V>> {
         @Override
