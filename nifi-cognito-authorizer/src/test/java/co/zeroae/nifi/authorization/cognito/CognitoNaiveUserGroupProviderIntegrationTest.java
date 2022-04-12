@@ -30,7 +30,6 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 
 public class CognitoNaiveUserGroupProviderIntegrationTest {
@@ -144,6 +143,8 @@ public class CognitoNaiveUserGroupProviderIntegrationTest {
 
         Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_USER_POOL_ID)))
                 .thenReturn(new MockPropertyValue(userPool.id()));
+        Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_MESSAGE_ACTION)))
+                .thenReturn(new MockPropertyValue("SUPPRESS"));
 
         properties = mock(NiFiProperties.class);
     }
