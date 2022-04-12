@@ -18,6 +18,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.MessageActionType;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -33,6 +34,8 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     public static final String PROP_USER_POOL_ID = "User Pool";
     public static final String PROP_PAGE_SIZE = "Page Size";
+    public static final String PROP_MESSAGE_ACTION = "Message Action";
+
     public static final String PROP_ADD_USER_PREFIX = "Add User";
     public static final String PROP_ADD_GROUP_PREFIX = "Add Group";
     public static final String PROP_ADD_USERS_TO_GROUP_PREFIX = "Add Users To Group";
@@ -58,6 +61,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     CognitoIdentityProviderClient cognitoClient;
     String userPoolId;
     int pageSize;
+    MessageActionType messageAction;
 
     Set<User> initialUsers;
     Set<Group> initialGroups;
@@ -80,6 +84,8 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
             throw new AuthorizerCreationException("User Pool must be valid.");
+
+        messageAction = MessageActionType.fromValue(getProperty(configurationContext, PROP_MESSAGE_ACTION, null));
 
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);

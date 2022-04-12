@@ -300,7 +300,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                         AttributeType.builder().name("email_verified").value(Boolean.TRUE.toString()).build()
                         )
                 .forceAliasCreation(false)
-                .messageAction(MessageActionType.SUPPRESS) // Do not send an e-mail
+                .messageAction(messageAction)
+                .desiredDeliveryMediums(DeliveryMediumType.EMAIL)
                 .build();
         try {
             cognitoClient.adminCreateUser(request);
