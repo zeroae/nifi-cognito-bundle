@@ -26,6 +26,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
+        StopWatch watch = new StopWatch();
+        watch.start();
 
         RetryPolicy<Object> nullRetryPolicy = RetryPolicy.builder()
                 .withMaxAttempts(10)
@@ -61,6 +63,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                                     .run(() -> addUserToGroup(user, group.getIdentifier()))
                     );
                 });
+        watch.stop();
+        logger.info("Initial Users/Groups created: " + watch.getDuration());
     }
 
     @Override
