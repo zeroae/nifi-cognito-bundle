@@ -15,17 +15,17 @@
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
-    <properties>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <maven.compiler.source>1.8</maven.compiler.source>
-    </properties>
-
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-nar-bundles</artifactId>
         <version>1.15.3</version>
     </parent>
+
+    <properties>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <nifi.version>1.15.3</nifi.version>
+    </properties>
 
     <groupId>co.zeroae.nifi</groupId>
     <artifactId>nifi-cognito-bundle</artifactId>
@@ -61,6 +61,8 @@
     <modules>
         <module>nifi-cognito-authorizer</module>
         <module>nifi-cognito-nar</module>
+        <module>nifi-registry-cognito-extensions</module>
+        <module>nifi-registry-cognito-assembly</module>
     </modules>
 
 </project>
