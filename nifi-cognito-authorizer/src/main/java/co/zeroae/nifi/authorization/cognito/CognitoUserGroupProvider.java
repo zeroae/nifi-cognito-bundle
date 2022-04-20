@@ -62,6 +62,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .groups()
                         .stream()
+                        .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX))
                         .collect(Collectors.toSet())
                 );
 
@@ -95,6 +96,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .users()
                         .stream()
+                        .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX))
                         .collect(Collectors.toSet())
                 );
     }
