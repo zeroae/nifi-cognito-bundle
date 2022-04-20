@@ -45,7 +45,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
 
-    public static final String ACCESS_POLICY_GROUP_PREFIX = "app:nfc:";
+    public static final String ACCESS_POLICY_GROUP_PREFIX = "acl:nfc:";
     public static final String ACCESS_POLICY_FAUX_USER_PREFIX = "grp:";
     public static final String ACCESS_POLICY_FAUX_USER_EMAIL_FORMAT = "%s@group.local";
 
