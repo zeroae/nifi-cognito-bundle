@@ -35,9 +35,9 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
                 .build(new AbstractCacheLoaderAll<String, AccessPolicy>() {
                     @Override
                     public Optional<AccessPolicy> load(@NonNull String groupName) {
-                        final String[] acl = groupName.split(":", 5);
+                        Map.Entry<String, RequestAction> resourceAndAction= getResourceAndAction(groupName);
                         return Optional.ofNullable(CognitoAccessPolicyProvider.super.getAccessPolicy(
-                                acl[4], RequestAction.valueOfValue(acl[3]))
+                                resourceAndAction.getKey(), resourceAndAction.getValue())
                         );
                     }
 

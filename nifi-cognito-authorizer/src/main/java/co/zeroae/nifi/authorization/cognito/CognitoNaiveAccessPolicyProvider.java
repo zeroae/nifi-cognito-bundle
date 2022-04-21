@@ -77,12 +77,11 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
 
     protected AccessPolicy buildAccessPolicy(GroupType group) {
         logger.debug("Building AccessPolicy from " + group);
-        // <acl>:<nfc|nfr>:[id]:<action>:<resource>
-        final String[] acl = group.groupName().split(":", 5);
+        Map.Entry<String, RequestAction> resourceAndAction = getResourceAndAction(group.groupName());
         AccessPolicy.Builder accessPolicyBuilder = new AccessPolicy.Builder()
                 .identifier(group.description())
-                .resource(acl[4])
-                .action(RequestAction.valueOfValue(acl[3]));
+                .resource(resourceAndAction.getKey())
+                .action(resourceAndAction.getValue());
         getPrincipalsInPolicy(group).forEach(principal -> {
             if (principal.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
                 accessPolicyBuilder.addGroup(principal.substring(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX.length()));
@@ -121,6 +120,12 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
 
     protected String getGroupName(String resource, RequestAction action) {
         return String.join(":", policyGroupPrefix, action.toString(), resource);
+    }
+
+    protected Map.Entry<String, RequestAction> getResourceAndAction(String groupName) {
+        // <acl>:<nfc|nfr>:[cluster-id|registry-id]:<action>:<resource>
+        final String[] acl = groupName.split(":", 5);
+        return new AbstractMap.SimpleEntry<>(acl[4], RequestAction.valueOfValue(acl[3]));
     }
 
     @Override
