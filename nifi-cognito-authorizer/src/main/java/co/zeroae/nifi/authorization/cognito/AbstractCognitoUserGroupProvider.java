@@ -33,7 +33,6 @@ import java.util.stream.Stream;
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     public static final String PROP_USER_POOL_ID = "User Pool";
-    public static final String PROP_PAGE_SIZE = "Page Size";
     public static final String PROP_MESSAGE_ACTION = "Message Action";
 
     public static final String PROP_ADD_USER_PREFIX = "Add User";
@@ -42,7 +41,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final String IDENTITY_ATTRIBUTE = "email";
 
-    public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
 
     public static final String ACCESS_POLICY_GROUP_PREFIX = "acl:nfc:";
@@ -84,9 +82,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
-        pageSize = Integer.parseInt(getProperty(configurationContext, PROP_PAGE_SIZE, DEFAULT_PAGE_SIZE));
-        if (pageSize > MAX_PAGE_SIZE)
-            throw new AuthorizerCreationException(String.format("Max page size for Cognito is %d.", MAX_PAGE_SIZE));
+        pageSize = MAX_PAGE_SIZE;
 
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
