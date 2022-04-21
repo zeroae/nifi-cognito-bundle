@@ -123,7 +123,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
 
         AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        if (isNotBlank(accessKey) && isNotBlank(secretKey))
+        if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey))
             return CognitoIdentityProviderClient.builder()
                     .region(region)
                     .credentialsProvider(StaticCredentialsProvider.create(basicCredentials))
@@ -145,10 +145,6 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
             properties.load(in);
             return properties;
         }
-    }
-
-    private static boolean isNotBlank(final String value) {
-        return value != null && !value.trim().equals("");
     }
 
     protected String getProperty(AuthorizerConfigurationContext authContext, String propertyName, String defaultValue) {
