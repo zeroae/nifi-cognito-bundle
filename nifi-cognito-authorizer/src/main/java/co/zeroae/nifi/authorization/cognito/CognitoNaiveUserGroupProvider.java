@@ -79,7 +79,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
         watch.start();
         try {
             rv = cognitoClient.listUsersPaginator(request).users().stream()
-                    .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX))
+                    .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
                     .map(user -> {
                         final User.Builder userBuilder = new User.Builder()
                                 .identifier(user.username());
@@ -360,7 +360,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .build();
         AdminCreateUserRequest adminCreateUserRequest = AdminCreateUserRequest.builder()
                 .userPoolId(userPoolId)
-                .username(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX + group.getIdentifier())
+                .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
                 .userAttributes(
                         AttributeType.builder().name(IDENTITY_ATTRIBUTE).value(String.format(
                                 proxyUserEmailDomain, group.getIdentifier())).build(),
@@ -440,11 +440,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             cognitoClient.deleteGroup(request);
             cognitoClient.adminDisableUser(AdminDisableUserRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX + group.getIdentifier())
+                    .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
                     .build());
             cognitoClient.adminDeleteUser(AdminDeleteUserRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX + group.getIdentifier())
+                    .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
                     .build());
         } catch (final ResourceNotFoundException | UserNotFoundException e ) {
             return null;

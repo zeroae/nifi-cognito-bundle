@@ -44,8 +44,9 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     public static final int MAX_PAGE_SIZE = 60;
 
     public static final String ACCESS_POLICY_GROUP_PREFIX = "acl:nfc:";
-    public static final String ACCESS_POLICY_FAUX_USER_PREFIX = "grp:";
-    public static final String ACCESS_POLICY_FAUX_USER_EMAIL_FORMAT = "%s@group.local";
+
+    public static final String GROUP_PROXY_USER_PREFIX = "grp:";
+    public static final String GROUP_PROXY_USER_EMAIL_FORMAT = "%s@group.local";
 
     static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(
             PROP_ADD_USER_PREFIX + " (?<identifier>\\S+)");
@@ -91,7 +92,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         messageAction = MessageActionType.fromValue(getProperty(configurationContext, PROP_MESSAGE_ACTION, null));
 
         addProxyUserPerGroup = true;
-        proxyUserEmailDomain = ACCESS_POLICY_FAUX_USER_EMAIL_FORMAT;
+        proxyUserEmailDomain = GROUP_PROXY_USER_EMAIL_FORMAT;
 
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);

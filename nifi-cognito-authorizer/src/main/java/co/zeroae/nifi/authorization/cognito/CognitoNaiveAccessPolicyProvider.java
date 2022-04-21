@@ -71,8 +71,8 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
                 .resource(group.description().split("#", 2)[0])
                 .action(RequestAction.valueOfValue(group.description().split("#", 2)[1]));
         getPrincipalsInPolicy(group.groupName()).forEach(principal -> {
-            if (principal.startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX))
-                accessPolicyBuilder.addGroup(principal.substring(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX.length()));
+            if (principal.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
+                accessPolicyBuilder.addGroup(principal.substring(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX.length()));
             else
                 accessPolicyBuilder.addUser(principal);
         });
@@ -202,7 +202,7 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
     }
 
     private String ensureGroupFormat(String group) {
-        return group.startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX) ? group : AbstractCognitoUserGroupProvider.ACCESS_POLICY_FAUX_USER_PREFIX + group;
+        return group.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX) ? group : AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group;
     }
 
     @Override
