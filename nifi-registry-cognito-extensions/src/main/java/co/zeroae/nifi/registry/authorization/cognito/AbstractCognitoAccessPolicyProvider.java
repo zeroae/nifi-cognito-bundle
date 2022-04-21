@@ -27,6 +27,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
     public static final String PROP_USER_POOL_ID = "User Pool";
     public static final String PROP_USER_GROUP_PROVIDER = "User Group Provider";
     public static final String PROP_INITIAL_ADMIN_IDENTITY = "Initial Admin Identity";
+    public static final String PROP_INITIAL_ADMIN_GROUP = "Admin Group";
     public static final String PROP_NODE_GROUP_NAME = "Node Group";
 
     public static final int MAX_PAGE_SIZE = 60;
@@ -47,6 +48,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
     int pageSize;
 
     User initialAdmin;
+    Group initialAdminGroup;
     Group initialNodeGroup;
 
     String policyGroupPrefix;
@@ -97,13 +99,28 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
 
         // get the value of the initial admin identity
         final PropertyValue initialAdminIdentityProp = configurationContext.getProperty(PROP_INITIAL_ADMIN_IDENTITY);
-        final String initialAdminIdentity = initialAdminIdentityProp.isSet() ? IdentityMappingUtil.mapIdentity(initialAdminIdentityProp.getValue(), identityMappings) : null;
+        final String initialAdminIdentity = initialAdminIdentityProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialAdminIdentityProp.getValue(), identityMappings
+        ) : null;
         if (initialAdminIdentity != null)
             initialAdmin = userGroupProvider.getUserByIdentity(initialAdminIdentity);
 
-        // extract any node identities
+        // get the value of the initial admin group
+        final PropertyValue initialAdminGroupProp = configurationContext.getProperty(PROP_INITIAL_ADMIN_GROUP);
+        final String initialAdminGroupIdentity = initialAdminGroupProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialAdminGroupProp.getValue(), groupMappings
+        ) : null;
+        if (initialAdminGroupIdentity != null)
+            initialAdminGroup = userGroupProvider.getGroups().stream()
+                    .filter(group -> group.getName().equals(initialAdminGroupIdentity))
+                    .findFirst()
+                    .orElse(null);
+
+        // extract any node groups
         final PropertyValue initialNodeGroupProp = configurationContext.getProperty(PROP_NODE_GROUP_NAME);
-        final String initialNodeGroupIdentity = initialNodeGroupProp.isSet() ? IdentityMappingUtil.mapIdentity(initialNodeGroupProp.getValue(), groupMappings) : null;
+        final String initialNodeGroupIdentity = initialNodeGroupProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialNodeGroupProp.getValue(), groupMappings
+        ) : null;
         if (initialNodeGroupIdentity != null)
             initialNodeGroup = userGroupProvider.getGroups().stream()
                     .filter(group -> group.getName().equals(initialNodeGroupIdentity))
@@ -128,7 +145,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
 
         AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        if (isNotBlank(accessKey) && isNotBlank(secretKey))
+        if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey))
             return CognitoIdentityProviderClient.builder()
                     .region(region)
                     .credentialsProvider(StaticCredentialsProvider.create(basicCredentials))
@@ -150,10 +167,6 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
             properties.load(in);
             return properties;
         }
-    }
-
-    private static boolean isNotBlank(final String value) {
-        return value != null && !value.trim().equals("");
     }
 
     protected String getProperty(AuthorizerConfigurationContext authContext, String propertyName, String defaultValue) {

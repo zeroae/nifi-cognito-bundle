@@ -26,29 +26,35 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
         final List<RequestAction> all = Collections.unmodifiableList(Arrays.asList(
                 RequestAction.READ, RequestAction.WRITE, RequestAction.DELETE
         ));
-        final Map<String, Map<String, List<RequestAction>>> identifierToPolicies = new HashMap<>();
+        final Map<String, List<RequestAction>> nodePolicies= Collections.unmodifiableMap(
+                new HashMap<String, List<RequestAction>>() {{
+                    put("/buckets", read);
+                    put("/proxy", all);
+                }}
+        );
+        final Map<String, List<RequestAction>> adminPolicies = Collections.unmodifiableMap(
+                new HashMap<String, List<RequestAction>>() {{
+                    put("/tenants", all);
+                    put("/policies", all);
+                    put("/buckets", all);
+                    put("/actuator", all);
+                    put("/swagger", all);
+                    put("/proxy", all);
+                }}
+        );
 
-        if (initialNodeGroup != null) {
-            Map<String, List<RequestAction>> policies = new HashMap<String, List<RequestAction>>() {{
-                put("/buckets", read);
-                put("/proxy", all);
-            }};
-            identifierToPolicies.put(getGroupProxyUsername(initialNodeGroup.getIdentifier()), policies);
-        }
+        final Map<String, Map<String, List<RequestAction>>> initialPolicies = new HashMap<>();
 
-        if (initialAdmin != null) {
-            Map<String, List<RequestAction>> policies = Collections.unmodifiableMap(new HashMap<String, List<RequestAction>>() {{
-                put("/tenants", all);
-                put("/policies", all);
-                put("/buckets", all);
-                put("/actuator", all);
-                put("/swagger", all);
-                put("/proxy", all);
-            }});
-            identifierToPolicies.put(initialAdmin.getIdentifier(), policies);
-        }
+        if (initialNodeGroup != null)
+            initialPolicies.put(getGroupProxyUsername(initialNodeGroup.getIdentifier()), nodePolicies);
 
-        identifierToPolicies.forEach((principal, value) -> value.entrySet().stream()
+        if (initialAdmin != null)
+            initialPolicies.put(initialAdmin.getIdentifier(), adminPolicies);
+
+        if (initialAdminGroup != null)
+            initialPolicies.put(getGroupProxyUsername(initialAdminGroup.getIdentifier()), adminPolicies);
+
+        initialPolicies.forEach((principal, value) -> value.entrySet().stream()
                 .map(entry -> entry.getValue().stream()
                         .map(action -> new AccessPolicy.Builder()
                                 .identifierGenerateRandom()
