@@ -69,9 +69,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
     Set<User> initialUsers;
     Set<Group> initialGroups;
 
-    boolean addProxyUserPerGroup;
-    String proxyUserEmailDomain;
-
     @AuthorizerContext
     public void setup(NiFiProperties properties) {
         this.properties = properties;
@@ -90,9 +87,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
             throw new AuthorizerCreationException("User Pool must be valid.");
 
         messageAction = MessageActionType.fromValue(getProperty(configurationContext, PROP_MESSAGE_ACTION, null));
-
-        addProxyUserPerGroup = true;
-        proxyUserEmailDomain = GROUP_PROXY_USER_EMAIL_FORMAT;
 
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);

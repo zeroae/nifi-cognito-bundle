@@ -38,6 +38,9 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final int MAX_PAGE_SIZE = 60;
 
+    public static final String GROUP_PROXY_USER_PREFIX = "grp:";
+    public static final String GROUP_PROXY_USER_EMAIL_FORMAT = "%s@group.local";
+
     static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(
             PROP_ADD_USER_PREFIX + " (?<identifier>\\S+)");
     static final Pattern INITIAL_GROUP_IDENTITY_PATTERN = Pattern.compile(

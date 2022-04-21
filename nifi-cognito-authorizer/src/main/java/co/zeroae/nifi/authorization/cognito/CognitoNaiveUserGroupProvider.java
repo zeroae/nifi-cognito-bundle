@@ -70,7 +70,6 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     @Override
     public Set<User> getUsers() throws AuthorizationAccessException {
         StopWatch watch = new StopWatch();
-        final Set<User> rv;
         final ListUsersRequest request = ListUsersRequest.builder()
                 .userPoolId(userPoolId)
                 .limit(pageSize)
@@ -78,7 +77,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .build();
         watch.start();
         try {
-            rv = cognitoClient.listUsersPaginator(request).users().stream()
+            final Set<User> rv = cognitoClient.listUsersPaginator(request).users().stream()
                     .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
                     .map(user -> {
                         final User.Builder userBuilder = new User.Builder()
@@ -89,13 +88,13 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                         });
                         return userBuilder.build();
                     }).collect(Collectors.toSet());
+            return Collections.unmodifiableSet(rv);
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {
             watch.stop();
             logger.debug("getUsers: " + watch.getDuration());
         }
-        return Collections.unmodifiableSet(rv);
     }
 
     @Override
@@ -353,6 +352,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     }
 
     protected Group addGroup(Group group, boolean setUsers) {
+        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         CreateGroupRequest request = CreateGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
@@ -360,10 +360,10 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .build();
         AdminCreateUserRequest adminCreateUserRequest = AdminCreateUserRequest.builder()
                 .userPoolId(userPoolId)
-                .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
+                .username(proxyUsername)
                 .userAttributes(
                         AttributeType.builder().name(IDENTITY_ATTRIBUTE).value(String.format(
-                                proxyUserEmailDomain, group.getIdentifier())).build(),
+                                GROUP_PROXY_USER_EMAIL_FORMAT, group.getIdentifier())).build(),
                         AttributeType.builder().name("email_verified").value("true").build())
                 .forceAliasCreation(false)
                 .messageAction(MessageActionType.SUPPRESS)
@@ -432,6 +432,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
 
     @Override
     public Group deleteGroup(Group group) throws AuthorizationAccessException {
+        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         DeleteGroupRequest request = DeleteGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
@@ -440,11 +441,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             cognitoClient.deleteGroup(request);
             cognitoClient.adminDisableUser(AdminDisableUserRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
+                    .username(proxyUsername)
                     .build());
             cognitoClient.adminDeleteUser(AdminDeleteUserRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier())
+                    .username(proxyUsername)
                     .build());
         } catch (final ResourceNotFoundException | UserNotFoundException e ) {
             return null;
