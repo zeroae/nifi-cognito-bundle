@@ -9,10 +9,10 @@ NiFi Authorization Extension using AWS Cognito
     ```
 
 ## Usage
-1. Add a new `userGroupProvider` to `authorizers.xml`.
+1. Add new `userGroupProvider` and `accessPolicyProvider` elements to `authorizers.xml`.
     ```xml
     <authorizers>
-       <!-- 
+        <!-- 
             The CognitoUserGroupProvider provides User and Group Management backed by AWS Cognito.
    
             - AWS Credentials File - The file where AWS Credentials can be found. If not defined it will use the standard 
@@ -46,11 +46,34 @@ NiFi Authorization Extension using AWS Cognito
                 UUID:3
             </property>
         </userGroupProvider>
+        <!--
+        The CognitoAccessPolicyProvider provides Access Policy Management backed by AWS Cognito.
+   
+            - AWS Credentials File - The file where AWS Credentials can be found. If not defined it will use the standard 
+                AWS credentials provider path.
+   
+            - User Pool - The *same* Cognito User Pool Id where the Users and Groups are stored.
+   
+            - User Group Provider - The identifier of the Cognito User Group Provider defined above.
+   
+            - Initial Admin Identity <user-uuid> - The identity of the initial admin user. The user must already exist
+                on the backend. 
+                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the user identity,
+                so the value should be the unmapped identity.
+           
+            - Node Group - The name of a group containing NiFi cluster nodes. 
+                The typical use for this is when nodes are dynamically added/removed from the cluster.
+                NOTE: Any identity mapping rules specified in nifi.properties will also be applied to the group identity,
+                so the value should be the unmapped identity.
+        -->
         <accessPolicyProvider>
-            <!-- ... -->
+            <identifier>cognito-access-policy-provider</identifier>
+            <class>co.zeroae.nifi.authorization.cognito.CognitoAccessPolicyProvider</class>
+            <property name="AWS Credentials File">./conf/bootstrap-aws.conf</property>
+            <property name="User Pool">us-east-1_edD0TJEd0</property>
             <property name="User Group Provider">cognito-configurable-user-group-provider</property>
+            <property name="Initial Admin Identity">CN=administrator, OU=NIFI</property>
             <property name="Node Group">Cluster</property>
-            <!-- ... -->
         </accessPolicyProvider>
     </authorizers>
     ```

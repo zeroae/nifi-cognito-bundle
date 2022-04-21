@@ -38,6 +38,10 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final int MAX_PAGE_SIZE = 60;
 
+    // TODO: This should come from the userpool itself through Tags!
+    //       Accepting it as a configuration option may cause inconsistency in case of misconfiguration across clusters.
+    public static final String EXCLUDE_GROUP_PREFIX = "acl:";
+
     public static final String GROUP_PROXY_USER_PREFIX = "grp:";
     public static final String GROUP_PROXY_USER_EMAIL_FORMAT = "%s@group.local";
 
@@ -138,7 +142,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
 
         AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        if (isNotBlank(accessKey) && isNotBlank(secretKey))
+        if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey))
             return CognitoIdentityProviderClient.builder()
                     .region(region)
                     .credentialsProvider(StaticCredentialsProvider.create(basicCredentials))
@@ -162,17 +166,12 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         }
     }
 
-    private static boolean isNotBlank(final String value) {
-        return value != null && !value.trim().equals("");
-    }
-
     @Override
     public void preDestruction() throws SecurityProviderCreationException {
         cognitoClient.close();
         userPoolId = null;
         pageSize = 0;
     }
-
 
     protected String getProperty(AuthorizerConfigurationContext authContext, String propertyName, String defaultValue) {
         final PropertyValue property = authContext.getProperty(propertyName);

@@ -242,7 +242,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             final Set<Group> groups = Collections.unmodifiableSet(cognitoClient.adminListGroupsForUserPaginator(request)
                     .groups()
                     .stream()
-                    .filter(group -> ! group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
+                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                     .map(group -> getGroup(group.groupName())).collect(Collectors.toSet()));
 
             return new UserAndGroups() {

@@ -154,27 +154,28 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     @Override
     public Set<Group> getGroups() throws AuthorizationAccessException {
         StopWatch watch = new StopWatch();
-        final Set<Group> rv = new HashSet<>();
         final ListGroupsRequest listGroupsRequest = ListGroupsRequest.builder()
                 .userPoolId(userPoolId)
                 .limit(pageSize)
                 .build();
         watch.start();
         try {
-            cognitoClient.listGroupsPaginator(listGroupsRequest).groups().forEach(group -> {
-                final Group.Builder groupBuilder = new Group.Builder()
-                        .identifier(group.groupName())
-                        .name(group.description());
-                getUsersInGroup(group.groupName()).forEach(groupBuilder::addUser);
-                rv.add(groupBuilder.build());
-            });
+            final Set<Group> rv = cognitoClient.listGroupsPaginator(listGroupsRequest).groups().stream()
+                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
+                    .map(group -> {
+                        final Group.Builder groupBuilder = new Group.Builder()
+                                .identifier(group.groupName())
+                                .name(group.description());
+                        getUsersInGroup(group.groupName()).forEach(groupBuilder::addUser);
+                        return groupBuilder.build();
+                    }).collect(Collectors.toSet());
+            return Collections.unmodifiableSet(rv);
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {
             watch.stop();
             logger.debug("getGroups: " + watch.getDuration());
         }
-        return Collections.unmodifiableSet(rv);
     }
 
     @Override
@@ -242,6 +243,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             final Set<Group> groups = Collections.unmodifiableSet(cognitoClient.adminListGroupsForUserPaginator(request)
                     .groups()
                     .stream()
+                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                     .map(group -> getGroup(group.groupName())).collect(Collectors.toSet()));
 
             return new UserAndGroups() {

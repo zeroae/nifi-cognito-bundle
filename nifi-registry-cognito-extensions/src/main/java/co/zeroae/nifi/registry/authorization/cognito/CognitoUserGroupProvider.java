@@ -62,6 +62,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .groups()
                         .stream()
+                        .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                         .collect(Collectors.toSet())
                 );
 
