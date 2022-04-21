@@ -23,12 +23,10 @@ import java.util.*;
 public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolicyProvider {
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     public static final String PROP_USER_POOL_ID = "User Pool";
-    public static final String PROP_PAGE_SIZE = "Page Size";
     public static final String PROP_USER_GROUP_PROVIDER = "User Group Provider";
     public static final String PROP_INITIAL_ADMIN_IDENTITY = "Initial Admin Identity";
     public static final String PROP_NODE_GROUP_NAME = "Node Group";
 
-    public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
 
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
@@ -71,9 +69,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
         if (userGroupProvider == null)
             throw new AuthorizerCreationException("Unable to locate user group provider with identifier " + userGroupProviderIdentifier.getValue());
 
-        pageSize = Integer.parseInt(getProperty(configurationContext, PROP_PAGE_SIZE, DEFAULT_PAGE_SIZE));
-        if (pageSize > MAX_PAGE_SIZE)
-            throw new AuthorizerCreationException(String.format("Max page size for Cognito is %d.", MAX_PAGE_SIZE));
+        pageSize = MAX_PAGE_SIZE;
 
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
