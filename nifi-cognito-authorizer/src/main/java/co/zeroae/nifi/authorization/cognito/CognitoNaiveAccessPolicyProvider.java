@@ -1,24 +1,66 @@
 package co.zeroae.nifi.authorization.cognito;
 
 import org.apache.nifi.authorization.AccessPolicy;
+import org.apache.nifi.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.authorization.ConfigurableAccessPolicyProvider;
 import org.apache.nifi.authorization.RequestAction;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
+import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
+import org.apache.nifi.authorization.resource.ResourceType;
 import org.apache.nifi.util.StopWatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
 import java.lang.UnsupportedOperationException;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolicyProvider implements ConfigurableAccessPolicyProvider {
     private final static Logger logger = LoggerFactory.getLogger(CognitoNaiveAccessPolicyProvider.class);
 
+
+    @Override
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
+        super.onConfigured(configurationContext);
+
+        final Map<String, Map<ResourceType, List<RequestAction>>> identiferToPolicies = new HashMap<>();
+
+        if (initialNodeGroup != null) {
+            Map<ResourceType, List<RequestAction>> policies = new HashMap<ResourceType, List<RequestAction>>() {{
+                put(ResourceType.Proxy, Collections.singletonList(RequestAction.WRITE));
+                put(ResourceType.SiteToSite, Collections.singletonList(RequestAction.READ));
+            }};
+            identiferToPolicies.put(getGroupProxyUsername(initialNodeGroup.getIdentifier()), policies);
+        }
+
+        if (initialAdmin != null) {
+            Map<ResourceType, List<RequestAction>> policies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
+                put(ResourceType.Flow, Collections.singletonList(RequestAction.READ));
+                put(ResourceType.RestrictedComponents, Collections.singletonList(RequestAction.WRITE));
+                put(ResourceType.Tenant, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
+                put(ResourceType.Policy, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
+                put(ResourceType.Controller, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
+            }});
+            identiferToPolicies.put(initialAdmin.getIdentifier(), policies);
+        }
+
+        identiferToPolicies.forEach((principal, value) -> value.entrySet().stream()
+                .map(entry -> entry.getValue().stream()
+                        .map(action -> new AccessPolicy.Builder()
+                                .identifierGenerateRandom()
+                                .resource(entry.getKey().getValue())
+                                .action(action)
+                                .build()
+                        ).collect(Collectors.toList()))
+                .flatMap(Collection::stream)
+                .map(policy -> {
+                    final AccessPolicy rv = getAccessPolicy(policy.getResource(), policy.getAction());
+                    return rv == null ? addAccessPolicy(policy, false) : rv;
+                })
+                .forEach(policy -> addPrincipalToPolicy(principal, policy)));
+    }
 
     @Override
     public Set<AccessPolicy> getAccessPolicies() throws AuthorizationAccessException {
@@ -153,6 +195,10 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
 
     @Override
     public AccessPolicy addAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
+        return addAccessPolicy(accessPolicy, true);
+    }
+
+    private AccessPolicy addAccessPolicy(AccessPolicy accessPolicy, boolean setPrincipals) {
         CreateGroupRequest request = CreateGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .description(accessPolicy.getIdentifier())
@@ -166,7 +212,7 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
             logger.error("Error creating policy: " + accessPolicy);
             throw new AuthorizationAccessException(e.getMessage(), e);
         }
-        return updateAccessPolicy(accessPolicy);
+        return setPrincipals ? updateAccessPolicy(accessPolicy) : accessPolicy;
     }
 
 
@@ -196,8 +242,8 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
         return getAccessPolicy(accessPolicy.getResource(), accessPolicy.getAction());
     }
 
-    private String getGroupProxyUsername(String group) {
-        return group.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX) ? group : AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group;
+    private String getGroupProxyUsername(String groupIdentifier) {
+        return groupIdentifier.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX) ? groupIdentifier : AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + groupIdentifier;
     }
 
     @Override
