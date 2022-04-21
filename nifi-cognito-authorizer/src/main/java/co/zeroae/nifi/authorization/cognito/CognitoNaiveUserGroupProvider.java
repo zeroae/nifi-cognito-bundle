@@ -35,6 +35,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .handleResult(null)
                 .abortOn(IllegalStateException.class)
                 .build();
+        RetryPolicy<Object> maxRetryPolicy= RetryPolicy.builder()
+                .withMaxAttempts(10)
+                .withBackoff(Duration.ofMillis(100), Duration.ofSeconds(5))
+                .abortOn(IllegalStateException.class)
+                .build();
 
         initialUsers.stream()
                 .filter(user -> getUser(user.getIdentifier()) == null)
@@ -58,11 +63,13 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                                     .compose(nullRetryPolicy)
                                     .get(() -> addGroup(group, false)),
                     "Could not initialize group " + group);
-                    group.getUsers().forEach(user ->
-                            Failsafe.with(nullRetryPolicy)
-                                    .run(() -> addUserToGroup(user, group.getIdentifier()))
-                    );
                 });
+
+        initialGroups.stream()
+                .filter(group -> getGroup(group.getIdentifier()) != null)
+                .forEach(group -> group.getUsers().forEach(user -> Failsafe.with(maxRetryPolicy).run(() ->
+                        addUserToGroup(user, group.getIdentifier())
+                )));
         watch.stop();
         logger.info("Initial Users/Groups created: " + watch.getDuration());
     }
