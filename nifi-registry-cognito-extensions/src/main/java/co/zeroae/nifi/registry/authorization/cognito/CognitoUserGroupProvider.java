@@ -95,6 +95,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .users()
                         .stream()
+                        .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
                         .collect(Collectors.toSet())
                 );
     }
