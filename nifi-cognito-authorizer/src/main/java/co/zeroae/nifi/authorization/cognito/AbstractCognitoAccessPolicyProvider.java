@@ -47,7 +47,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
     User initialAdmin;
     Group initialNodeGroup;
 
-    String policyWriteScope;
+    String policyGroupPrefix;
 
     @AuthorizerContext
     public void setup(NiFiProperties properties) { this.properties = properties; }
@@ -78,7 +78,7 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
         if (userPoolId == null)
             throw new AuthorizerCreationException("User Pool must be valid.");
 
-        policyWriteScope = "*";
+        policyGroupPrefix = ACCESS_POLICY_GROUP_PREFIX + "";
 
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);

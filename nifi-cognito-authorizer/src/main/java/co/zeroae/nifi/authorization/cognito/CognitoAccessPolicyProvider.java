@@ -17,9 +17,9 @@ import java.util.stream.Stream;
 
 public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvider {
 
-    LoadingCache<String, Set<GroupType>> groupTypeCache;
+    LoadingCache<Map.Entry<String, String>, Set<GroupType>> groupTypeCache;
     LoadingCache<String, Optional<AccessPolicy>> policyCache;
-    LoadingCache<Map.Entry<String, RequestAction>, Optional<AccessPolicy>> policyByResourceAndAction;
+    LoadingCache<String, Optional<AccessPolicy>> policyByGroupName;
 
     @Override
     public void initialize(AccessPolicyProviderInitializationContext initializationContext) throws AuthorizerCreationException {
@@ -27,10 +27,18 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
         // TODO: Use a Cache Spec String
         policyCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
+                .build(identifier ->
+                        Optional.ofNullable(CognitoAccessPolicyProvider.super.getAccessPolicy(identifier))
+                );
+        policyByGroupName = Caffeine.newBuilder()
+                .refreshAfterWrite(1, TimeUnit.MINUTES)
                 .build(new AbstractCacheLoaderAll<String, AccessPolicy>() {
                     @Override
-                    public Optional<AccessPolicy> load(@NonNull String key) {
-                        return Optional.ofNullable(CognitoAccessPolicyProvider.super.getAccessPolicy(key));
+                    public Optional<AccessPolicy> load(@NonNull String groupName) {
+                        final String[] acl = groupName.split(":", 5);
+                        return Optional.ofNullable(CognitoAccessPolicyProvider.super.getAccessPolicy(
+                                acl[4], RequestAction.valueOfValue(acl[3]))
+                        );
                     }
 
                     @Override
@@ -40,24 +48,18 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
 
                     @Override
                     public String getKey(AccessPolicy value) {
-                        return value.getIdentifier();
+                        return getGroupName(value);
                     }
                 });
-        policyByResourceAndAction = Caffeine.newBuilder()
-                .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(entry ->
-                        Optional.ofNullable(CognitoAccessPolicyProvider.super.getAccessPolicy(entry.getKey(), entry.getValue()))
-                );
         groupTypeCache = Caffeine.newBuilder()
                 .expireAfterWrite(1, TimeUnit.MINUTES)
-                .build(userPoolId -> cognitoClient.listGroupsPaginator(ListGroupsRequest.builder()
-                                .userPoolId(userPoolId)
+                .build(entry -> cognitoClient.listGroupsPaginator(ListGroupsRequest.builder()
+                                .userPoolId(entry.getKey())
                                 .limit(pageSize)
                                 .build())
                         .groups()
                         .stream()
-                        .filter(group -> group.groupName().startsWith(
-                                AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX))
+                        .filter(group -> group.groupName().startsWith(entry.getValue()))
                         .collect(Collectors.toSet())
                 );
     }
@@ -66,19 +68,19 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
         Stream.of(
-                groupTypeCache, policyCache, policyByResourceAndAction
+                groupTypeCache, policyCache, policyByGroupName
         ).forEachOrdered(Cache::invalidateAll);
     }
 
     @Override
     public Set<AccessPolicy> getAccessPolicies() throws AuthorizationAccessException {
-        final Set<String> policyNames = Objects.requireNonNull(groupTypeCache.get(userPoolId))
-                .stream()
+        final Set<String> policyGroupNames = Objects.requireNonNull(
+                groupTypeCache.get(new AbstractMap.SimpleEntry<>(userPoolId, policyGroupPrefix))).stream()
                 .map(GroupType::groupName)
                 .collect(Collectors.toSet());
-        policyCache.getAll(policyNames);
+        policyByGroupName.getAll(policyGroupNames);
 
-        final Set<AccessPolicy> rv = policyCache.asMap().values().stream()
+        final Set<AccessPolicy> rv = policyByGroupName.asMap().values().stream()
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toSet());
@@ -91,56 +93,56 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
     }
 
     @Override
-    public AccessPolicy getAccessPolicy(String resourceIdentifier, RequestAction action) throws AuthorizationAccessException {
-        return Objects.requireNonNull(policyByResourceAndAction.get(
-                new AbstractMap.SimpleEntry<>(resourceIdentifier, action)
-        )).orElse(null);
+    public AccessPolicy getAccessPolicy(String resource, RequestAction action) throws AuthorizationAccessException {
+        return Objects.requireNonNull(policyByGroupName.get(getGroupName(resource, action))).orElse(null);
     }
 
     @Override
     public AccessPolicy addAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
-        final AccessPolicy rv = super.addAccessPolicy(accessPolicy);
-        policyCache.invalidate(rv.getIdentifier());
-        policyByResourceAndAction.invalidate(new AbstractMap.SimpleEntry<>(rv.getResource(), rv.getAction()));
-        return rv;
+        try {
+            AccessPolicy rv = super.addAccessPolicy(accessPolicy);
+            groupTypeCache.invalidateAll();
+            return rv;
+        } finally {
+            invalidate(accessPolicy);
+        }
     }
 
     @Override
     public AccessPolicy updateAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
-        policyCache.invalidate(accessPolicy.getIdentifier());
-        policyByResourceAndAction.invalidate(new AbstractMap.SimpleEntry<>(accessPolicy.getResource(), accessPolicy.getAction()));
+        invalidate(accessPolicy);
         return super.updateAccessPolicy(accessPolicy);
     }
 
     @Override
     public AccessPolicy deleteAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
-        AccessPolicy rv = null;
         try {
-            rv = super.deleteAccessPolicy(accessPolicy);
-            return rv;
+            return super.deleteAccessPolicy(accessPolicy);
         } finally {
-            final String identifier = rv == null ? accessPolicy.getIdentifier() : rv.getIdentifier();
-            final Map.Entry<String, RequestAction> resourceAction = new AbstractMap.SimpleEntry<>(
-                    rv == null ? accessPolicy.getResource() : rv.getResource(),
-                    rv == null ? accessPolicy.getAction() : rv.getAction()
-            );
-            policyCache.invalidate(identifier);
-            policyByResourceAndAction.invalidate(resourceAction);
+            invalidate(accessPolicy);
         }
     }
 
     @Override
-    protected void addPrincipalToPolicy(String principalIdentifier, String policyIdentifier) {
-        super.addPrincipalToPolicy(principalIdentifier, policyIdentifier);
-        policyCache.invalidate(policyIdentifier);
+    protected void addPrincipalToPolicy(String principalIdentifier, AccessPolicy policy) {
+        try {
+            super.addPrincipalToPolicy(principalIdentifier, policy);
+        } finally {
+            invalidate(policy);
+        }
     }
 
     @Override
-    protected void removePrincipalFromPolicy(String principalIdentifier, String policyIdentifier) {
+    protected void removePrincipalFromPolicy(String principalIdentifier, AccessPolicy policy) {
         try {
-            super.removePrincipalFromPolicy(principalIdentifier, policyIdentifier);
+            super.removePrincipalFromPolicy(principalIdentifier, policy);
         } finally {
-            policyCache.invalidate(policyIdentifier);
+            invalidate(policy);
         }
+    }
+
+    private void invalidate(AccessPolicy policy) {
+        policyCache.invalidate(policy.getIdentifier());
+        policyByGroupName.invalidate(getGroupName(policy));
     }
 }

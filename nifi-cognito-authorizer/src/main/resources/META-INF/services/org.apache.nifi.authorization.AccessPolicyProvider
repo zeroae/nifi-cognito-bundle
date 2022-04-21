@@ -13,3 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 co.zeroae.nifi.authorization.cognito.CognitoAccessPolicyProvider
+co.zeroae.nifi.authorization.cognito.CognitoNaiveAccessPolicyProvider
