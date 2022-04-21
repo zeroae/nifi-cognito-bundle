@@ -56,7 +56,8 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
                                 .build())
                         .groups()
                         .stream()
-                        .filter(group -> group.groupName().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX))
+                        .filter(group -> group.groupName().startsWith(
+                                AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX))
                         .collect(Collectors.toSet())
                 );
     }

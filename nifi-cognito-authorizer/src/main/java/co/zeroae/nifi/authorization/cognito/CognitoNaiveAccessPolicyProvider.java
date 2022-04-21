@@ -31,7 +31,8 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
         watch.start();
         try {
             rv = cognitoClient.listGroupsPaginator(request).groups().stream()
-                    .filter(group -> group.groupName().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX))
+                    .filter(group -> group.groupName().startsWith(
+                            AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX))
                     .map(this::buildAccessPolicy)
                     .collect(Collectors.toSet());
         } catch (CognitoIdentityProviderException e){
@@ -157,13 +158,13 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
     }
 
     protected String ensureAccessPolicyIdentifierFormat(String identifier) {
-        if (identifier.startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX))
+        if (identifier.startsWith(AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX))
             return identifier;
-        return AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX + policyWriteScope + ":" + identifier;
+        return AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX + policyWriteScope + ":" + identifier;
 
     }
     protected AccessPolicy ensureAccessPolicyIdentifierFormat(AccessPolicy accessPolicy) {
-        if (accessPolicy.getIdentifier().startsWith(AbstractCognitoUserGroupProvider.ACCESS_POLICY_GROUP_PREFIX))
+        if (accessPolicy.getIdentifier().startsWith(AbstractCognitoAccessPolicyProvider.ACCESS_POLICY_GROUP_PREFIX))
             return accessPolicy;
         return new AccessPolicy.Builder()
                 .identifier(ensureAccessPolicyIdentifierFormat(accessPolicy.getIdentifier()))

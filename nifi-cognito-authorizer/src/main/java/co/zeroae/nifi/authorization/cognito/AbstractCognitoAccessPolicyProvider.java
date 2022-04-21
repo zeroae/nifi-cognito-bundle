@@ -29,6 +29,9 @@ public abstract class AbstractCognitoAccessPolicyProvider implements AccessPolic
 
     public static final int MAX_PAGE_SIZE = 60;
 
+    public static final String ACCESS_POLICY_GROUP_PREFIX =
+            AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX + "nfc:";
+
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
     static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 

@@ -43,7 +43,9 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final int MAX_PAGE_SIZE = 60;
 
-    public static final String ACCESS_POLICY_GROUP_PREFIX = "acl:nfc:";
+    // TODO: This should come from the userpool itself through Tags!
+    //       Accepting it as a configuration option may cause inconsistency in case of misconfiguration across clusters.
+    public static final String EXCLUDE_GROUP_PREFIX = "acl:";
 
     public static final String GROUP_PROXY_USER_PREFIX = "grp:";
     public static final String GROUP_PROXY_USER_EMAIL_FORMAT = "%s@group.local";
