@@ -25,28 +25,34 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
 
-        final Map<String, Map<ResourceType, List<RequestAction>>> identiferToPolicies = new HashMap<>();
+        final List<RequestAction> write = Collections.singletonList(RequestAction.WRITE);
+        final List<RequestAction> read = Collections.singletonList(RequestAction.READ);
+        final List<RequestAction> all = Collections.singletonList(RequestAction.READ);
 
-        if (initialNodeGroup != null) {
-            Map<ResourceType, List<RequestAction>> policies = new HashMap<ResourceType, List<RequestAction>>() {{
-                put(ResourceType.Proxy, Collections.singletonList(RequestAction.WRITE));
-                put(ResourceType.SiteToSite, Collections.singletonList(RequestAction.READ));
-            }};
-            identiferToPolicies.put(getGroupProxyUsername(initialNodeGroup.getIdentifier()), policies);
-        }
 
-        if (initialAdmin != null) {
-            Map<ResourceType, List<RequestAction>> policies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
-                put(ResourceType.Flow, Collections.singletonList(RequestAction.READ));
-                put(ResourceType.RestrictedComponents, Collections.singletonList(RequestAction.WRITE));
-                put(ResourceType.Tenant, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
-                put(ResourceType.Policy, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
-                put(ResourceType.Controller, Arrays.asList(RequestAction.READ, RequestAction.WRITE));
-            }});
-            identiferToPolicies.put(initialAdmin.getIdentifier(), policies);
-        }
+        Map<ResourceType, List<RequestAction>> nodePolicies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
+            put(ResourceType.Proxy, write);
+            put(ResourceType.SiteToSite, read);
+        }});
+        Map<ResourceType, List<RequestAction>> adminPolicies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
+            put(ResourceType.Flow, read);
+            put(ResourceType.RestrictedComponents, write);
+            put(ResourceType.Tenant, all);
+            put(ResourceType.Policy, all);
+            put(ResourceType.Controller, all);
+        }});
 
-        identiferToPolicies.forEach((principal, value) -> value.entrySet().stream()
+        final Map<String, Map<ResourceType, List<RequestAction>>> initialPolicies = new HashMap<>();
+        if (initialNodeGroup != null)
+            initialPolicies.put(getGroupProxyUsername(initialNodeGroup.getIdentifier()), nodePolicies);
+
+        if (initialAdmin != null)
+            initialPolicies.put(initialAdmin.getIdentifier(), adminPolicies);
+
+        if (initialAdminGroup != null)
+            initialPolicies.put(getGroupProxyUsername(initialAdminGroup.getIdentifier()), adminPolicies);
+
+        initialPolicies.forEach((principal, value) -> value.entrySet().stream()
                 .map(entry -> entry.getValue().stream()
                         .map(action -> new AccessPolicy.Builder()
                                 .identifierGenerateRandom()
