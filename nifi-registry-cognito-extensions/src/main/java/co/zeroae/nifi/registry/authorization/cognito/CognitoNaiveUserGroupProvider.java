@@ -3,6 +3,8 @@ package co.zeroae.nifi.registry.authorization.cognito;
 import dev.failsafe.Failsafe;
 import dev.failsafe.Fallback;
 import dev.failsafe.RetryPolicy;
+import org.apache.nifi.registry.properties.util.IdentityMapping;
+import org.apache.nifi.registry.properties.util.IdentityMappingUtil;
 import org.apache.nifi.registry.security.authorization.*;
 import org.apache.nifi.registry.security.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.registry.security.authorization.exception.UninheritableAuthorizationsException;
@@ -11,20 +13,92 @@ import org.apache.nifi.util.StopWatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
+import software.amazon.awssdk.utils.StringUtils;
 
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvider implements ConfigurableUserGroupProvider {
+public class CognitoNaiveUserGroupProvider extends AbstractCognitoProvider implements ConfigurableUserGroupProvider {
     private final static Logger logger = LoggerFactory.getLogger(CognitoNaiveUserGroupProvider.class);
+
+    public static final String PROP_MESSAGE_ACTION = "Message Action";
+
+    public static final String PROP_ADD_USER_PREFIX = "Add User";
+    public static final String PROP_ADD_GROUP_PREFIX = "Add Group";
+    public static final String PROP_ADD_USERS_TO_GROUP_PREFIX = "Add Users To Group";
+
+    public static final String IDENTITY_ATTRIBUTE = "email";
+
+    // TODO: This should come from the userpool itself through Tags!
+    //       Accepting it as a configuration option may cause inconsistency in case of misconfiguration across clusters.
+    public static final String EXCLUDE_GROUP_PREFIX = "acl:";
+
+    static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(
+            PROP_ADD_USER_PREFIX + " (?<identifier>\\S+)");
+    static final Pattern INITIAL_GROUP_IDENTITY_PATTERN = Pattern.compile(
+            PROP_ADD_GROUP_PREFIX + " (?<identifier>\\S+)");
+    static final Pattern INITIAL_GROUP_MEMBERS_PATTERN = Pattern.compile(
+            PROP_ADD_USERS_TO_GROUP_PREFIX + " (?<identifier>\\S+)");
+
+    MessageActionType messageAction;
+
+    Set<User> initialUsers;
+    Set<Group> initialGroups;
 
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException {
         super.onConfigured(configurationContext);
+
+        messageAction = MessageActionType.fromValue(getProperty(configurationContext, PROP_MESSAGE_ACTION, null));
+
+        // get Identity and Group Mappings
+        final List<IdentityMapping> identityMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getIdentityMappings(properties));
+        final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getGroupMappings(properties));
+
+        // extract any initial identities
+        final Map<String, User> userMap = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_USER_IDENTITY_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier").toLowerCase(), new User.Builder()
+                        .identifier(e.getKey().group("identifier").toLowerCase())
+                        .identity(IdentityMappingUtil.mapIdentity(e.getValue().trim(), identityMappings))
+                        .build()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        initialUsers = Collections.unmodifiableSet(new HashSet<>(userMap.values()));
+
+        // extract any initial groups
+        final Map<String, Group.Builder> groupMap = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_IDENTITY_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier").toLowerCase(), new Group.Builder()
+                        .identifier(e.getKey().group("identifier").toLowerCase())
+                        .name(IdentityMappingUtil.mapIdentity(e.getValue(), groupMappings))))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        // extract any initial user to group mappings
+        initialGroups = configurationContext.getProperties().entrySet().stream()
+                .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_MEMBERS_PATTERN.matcher(e.getKey()), e.getValue()))
+                .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))
+                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey().group("identifier").toLowerCase(), e.getValue()))
+                .filter(e -> groupMap.containsKey(e.getKey()))
+                .map(e -> groupMap.get(e.getKey())
+                        .addUsers(Stream.of(e.getValue().split(","))
+                                .map(String::trim)
+                                .filter(userMap::containsKey)
+                                .collect(Collectors.toSet()))
+                        .build())
+                .collect(Collectors.toSet());
+        initialGroups = Collections.unmodifiableSet(initialGroups);
+
+        createInitialUsersAndGroups();
+    }
+
+    private void createInitialUsersAndGroups() {
         StopWatch watch = new StopWatch();
         watch.start();
 
@@ -84,7 +158,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
         watch.start();
         try {
             final Set<User> rv = cognitoClient.listUsersPaginator(request).users().stream()
-                    .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
+                    .filter(user -> !user.username().startsWith(GROUP_PROXY_USER_PREFIX))
                     .map(user -> {
                         final User.Builder userBuilder = new User.Builder()
                                 .identifier(user.username());
@@ -168,7 +242,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
         watch.start();
         try {
             final Set<Group> rv = cognitoClient.listGroupsPaginator(listGroupsRequest).groups().stream()
-                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
+                    .filter(group -> !group.groupName().startsWith(CognitoNaiveUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                     .map(group -> {
                         final Group.Builder groupBuilder = new Group.Builder()
                                 .identifier(group.groupName())
@@ -250,7 +324,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             final Set<Group> groups = Collections.unmodifiableSet(cognitoClient.adminListGroupsForUserPaginator(request)
                     .groups()
                     .stream()
-                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
+                    .filter(group -> !group.groupName().startsWith(CognitoNaiveUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                     .map(group -> getGroup(group.groupName())).collect(Collectors.toSet()));
 
             return new UserAndGroups() {
@@ -355,7 +429,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     }
 
     protected Group addGroup(Group group, boolean setUsers) {
-        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
+        final String proxyUsername = GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         CreateGroupRequest request = CreateGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
@@ -435,7 +509,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
 
     @Override
     public Group deleteGroup(Group group) throws AuthorizationAccessException {
-        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
+        final String proxyUsername = GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         DeleteGroupRequest request = DeleteGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
@@ -456,5 +530,10 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             throw new AuthorizationAccessException("Error deleting group: " + group.getName(), e);
         }
         return group;
+    }
+
+    @Override
+    public void initialize(UserGroupProviderInitializationContext userGroupProviderInitializationContext) throws SecurityProviderCreationException {
+
     }
 }

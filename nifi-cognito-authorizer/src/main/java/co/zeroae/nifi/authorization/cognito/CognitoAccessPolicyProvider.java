@@ -16,14 +16,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvider {
-
     LoadingCache<Map.Entry<String, String>, Set<GroupType>> groupTypeCache;
     LoadingCache<String, Optional<AccessPolicy>> policyCache;
     LoadingCache<String, Optional<AccessPolicy>> policyByGroupName;
 
     @Override
-    public void initialize(AccessPolicyProviderInitializationContext initializationContext) throws AuthorizerCreationException {
-        super.initialize(initializationContext);
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         // TODO: Use a Cache Spec String
         policyCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
@@ -62,11 +60,9 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
                         .filter(group -> group.groupName().startsWith(entry.getValue()))
                         .collect(Collectors.toSet())
                 );
-    }
 
-    @Override
-    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
+
         Stream.of(
                 groupTypeCache, policyCache, policyByGroupName
         ).forEachOrdered(Cache::invalidateAll);

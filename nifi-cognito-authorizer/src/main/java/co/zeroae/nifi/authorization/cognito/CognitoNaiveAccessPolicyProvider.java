@@ -1,13 +1,13 @@
 package co.zeroae.nifi.authorization.cognito;
 
-import org.apache.nifi.authorization.AccessPolicy;
-import org.apache.nifi.authorization.AuthorizerConfigurationContext;
-import org.apache.nifi.authorization.ConfigurableAccessPolicyProvider;
-import org.apache.nifi.authorization.RequestAction;
+import org.apache.nifi.authorization.*;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
 import org.apache.nifi.authorization.resource.ResourceType;
+import org.apache.nifi.authorization.util.IdentityMapping;
+import org.apache.nifi.authorization.util.IdentityMappingUtil;
+import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.util.StopWatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,18 +17,80 @@ import java.lang.UnsupportedOperationException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolicyProvider implements ConfigurableAccessPolicyProvider {
-    private final static Logger logger = LoggerFactory.getLogger(CognitoNaiveAccessPolicyProvider.class);
+public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
+        implements ConfigurableAccessPolicyProvider {
+    private static final Logger logger = LoggerFactory.getLogger(CognitoNaiveAccessPolicyProvider.class);
 
+    public static final String PROP_USER_GROUP_PROVIDER = "User Group Provider";
+    public static final String PROP_INITIAL_ADMIN_IDENTITY = "Initial Admin Identity";
+    public static final String PROP_INITIAL_ADMIN_GROUP = "Admin Group";
+    public static final String PROP_NODE_GROUP_NAME = "Node Group";
+
+    private static final String ACCESS_POLICY_GROUP_PREFIX =
+            CognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX + "nfc:";
+
+    UserGroupProviderLookup userGroupProviderLookup;
+    UserGroupProvider userGroupProvider;
+
+    String policyGroupPrefix;
+
+    User initialAdmin;
+    Group initialAdminGroup;
+    Group initialNodeGroup;
+
+    @Override
+    public void initialize(AccessPolicyProviderInitializationContext initializationContext) throws AuthorizerCreationException {
+        userGroupProviderLookup = initializationContext.getUserGroupProviderLookup();
+    }
 
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
 
+        policyGroupPrefix = ACCESS_POLICY_GROUP_PREFIX + tenantId;
+
+        final PropertyValue userGroupProviderIdentifier = configurationContext.getProperty(PROP_USER_GROUP_PROVIDER);
+        if (!userGroupProviderIdentifier.isSet())
+            throw new AuthorizerCreationException("The user group provider must be specified");
+
+        userGroupProvider = userGroupProviderLookup.getUserGroupProvider(userGroupProviderIdentifier.getValue());
+        if (userGroupProvider == null)
+            throw new AuthorizerCreationException("Unable to locate user group provider with identifier " + userGroupProviderIdentifier.getValue());
+
+        // Get the Identity and Group Mappings
+        final List<IdentityMapping> identityMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getIdentityMappings(properties));
+        final List<IdentityMapping> groupMappings = Collections.unmodifiableList(
+                IdentityMappingUtil.getGroupMappings(properties));
+
+        // get the value of the initial admin identity
+        final PropertyValue initialAdminIdentityProp = configurationContext.getProperty(PROP_INITIAL_ADMIN_IDENTITY);
+        final String initialAdminIdentity = initialAdminIdentityProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialAdminIdentityProp.getValue(), identityMappings) : null;
+        if (initialAdminIdentity != null)
+            initialAdmin = userGroupProvider.getUserByIdentity(initialAdminIdentity);
+
+        // get the value of the initial admin group
+        final PropertyValue initialAdminGroupProp = configurationContext.getProperty(PROP_INITIAL_ADMIN_GROUP);
+        final String initialAdminGroupIdentity = initialAdminGroupProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialAdminGroupProp.getValue(), groupMappings) : null;
+        if (initialAdminGroupIdentity != null)
+            initialAdminGroup = userGroupProvider.getGroupByName(initialAdminGroupIdentity);
+
+        // get the value of the initial node group
+        final PropertyValue initialNodeGroupProp = configurationContext.getProperty(PROP_NODE_GROUP_NAME);
+        final String initialNodeGroupIdentity = initialNodeGroupProp.isSet() ? IdentityMappingUtil.mapIdentity(
+                initialNodeGroupProp.getValue(), groupMappings) : null;
+        if (initialNodeGroupIdentity != null)
+            initialNodeGroup = userGroupProvider.getGroupByName(initialNodeGroupIdentity);
+
+        applyInitialPolicies();
+    }
+
+    private void applyInitialPolicies() {
         final List<RequestAction> write = Collections.singletonList(RequestAction.WRITE);
         final List<RequestAction> read = Collections.singletonList(RequestAction.READ);
         final List<RequestAction> all = Arrays.asList(RequestAction.READ, RequestAction.WRITE);
-
 
         Map<ResourceType, List<RequestAction>> nodePolicies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
             put(ResourceType.Proxy, write);
@@ -66,6 +128,11 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
                     return rv == null ? addAccessPolicy(policy, false) : rv;
                 })
                 .forEach(policy -> addPrincipalToPolicy(principal, policy)));
+    }
+
+    @Override
+    public UserGroupProvider getUserGroupProvider() {
+        return userGroupProvider;
     }
 
     @Override
@@ -131,14 +198,13 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
                 .resource(resourceAndAction.getKey())
                 .action(resourceAndAction.getValue());
         getPrincipalsInPolicy(group).forEach(principal -> {
-            if (principal.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
-                accessPolicyBuilder.addGroup(principal.substring(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX.length()));
+            if (principal.startsWith(GROUP_PROXY_USER_PREFIX))
+                accessPolicyBuilder.addGroup(principal.substring(GROUP_PROXY_USER_PREFIX.length()));
             else
                 accessPolicyBuilder.addUser(principal);
         });
         return accessPolicyBuilder.build();
     }
-
 
     protected Set<String> getPrincipalsInPolicy(GroupType groupType) throws AuthorizationAccessException {
         StopWatch watch = new StopWatch();
@@ -221,7 +287,6 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
         return setPrincipals ? updateAccessPolicy(accessPolicy) : accessPolicy;
     }
 
-
     @Override
     public AccessPolicy updateAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
         AccessPolicy current = getAccessPolicy(accessPolicy.getResource(), accessPolicy.getAction());
@@ -249,7 +314,9 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
     }
 
     private String getGroupProxyUsername(String groupIdentifier) {
-        return groupIdentifier.startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX) ? groupIdentifier : AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + groupIdentifier;
+        return groupIdentifier.startsWith(GROUP_PROXY_USER_PREFIX)
+                ? groupIdentifier
+                : GROUP_PROXY_USER_PREFIX + groupIdentifier;
     }
 
     @Override

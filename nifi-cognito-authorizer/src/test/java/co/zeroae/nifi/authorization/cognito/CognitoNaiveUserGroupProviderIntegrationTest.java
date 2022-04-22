@@ -141,9 +141,9 @@ public class CognitoNaiveUserGroupProviderIntegrationTest {
         authContext = Mockito.mock(AuthorizerConfigurationContext.class);
         initContext = Mockito.mock(UserGroupProviderInitializationContext.class);
 
-        Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_USER_POOL_ID)))
+        Mockito.when(authContext.getProperty(Mockito.eq(CognitoUserGroupProvider.PROP_USER_POOL_ID)))
                 .thenReturn(new MockPropertyValue(userPool.id()));
-        Mockito.when(authContext.getProperty(Mockito.eq(AbstractCognitoUserGroupProvider.PROP_MESSAGE_ACTION)))
+        Mockito.when(authContext.getProperty(Mockito.eq(CognitoUserGroupProvider.PROP_MESSAGE_ACTION)))
                 .thenReturn(new MockPropertyValue("SUPPRESS"));
 
         properties = mock(NiFiProperties.class);
