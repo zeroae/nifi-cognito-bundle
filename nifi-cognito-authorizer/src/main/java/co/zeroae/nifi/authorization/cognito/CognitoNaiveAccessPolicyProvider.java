@@ -27,7 +27,7 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoAccessPolic
 
         final List<RequestAction> write = Collections.singletonList(RequestAction.WRITE);
         final List<RequestAction> read = Collections.singletonList(RequestAction.READ);
-        final List<RequestAction> all = Collections.singletonList(RequestAction.READ);
+        final List<RequestAction> all = Arrays.asList(RequestAction.READ, RequestAction.WRITE);
 
 
         Map<ResourceType, List<RequestAction>> nodePolicies = Collections.unmodifiableMap(new HashMap<ResourceType, List<RequestAction>>() {{
