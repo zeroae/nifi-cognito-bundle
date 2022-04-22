@@ -84,6 +84,8 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoProvider imple
                         .identifier(e.getKey().group("identifier").toLowerCase())
                         .name(IdentityMappingUtil.mapIdentity(e.getValue(), groupMappings))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        // extract any initial user to group mappings
         initialGroups = configurationContext.getProperties().entrySet().stream()
                 .map(e -> new AbstractMap.SimpleEntry<>(INITIAL_GROUP_MEMBERS_PATTERN.matcher(e.getKey()), e.getValue()))
                 .filter(e -> e.getKey().matches() && StringUtils.isNotBlank(e.getValue()))

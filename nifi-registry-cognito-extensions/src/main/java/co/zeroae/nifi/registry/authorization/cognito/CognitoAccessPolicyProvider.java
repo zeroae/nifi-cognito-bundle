@@ -4,7 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.apache.nifi.registry.security.authorization.AccessPolicy;
-import org.apache.nifi.registry.security.authorization.AccessPolicyProviderInitializationContext;
 import org.apache.nifi.registry.security.authorization.AuthorizerConfigurationContext;
 import org.apache.nifi.registry.security.authorization.RequestAction;
 import org.apache.nifi.registry.security.authorization.exception.AuthorizationAccessException;
@@ -25,8 +24,7 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
     LoadingCache<String, Optional<AccessPolicy>> policyByGroupName;
 
     @Override
-    public void initialize(AccessPolicyProviderInitializationContext initializationContext) throws SecurityProviderCreationException {
-        super.initialize(initializationContext);
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException {
         // TODO: Use a Cache Spec String
         policyCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
@@ -65,11 +63,9 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
                         .filter(group -> group.groupName().startsWith(entry.getValue()))
                         .collect(Collectors.toSet())
                 );
-    }
 
-    @Override
-    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException {
         super.onConfigured(configurationContext);
+
         Stream.of(
                 groupTypeCache, policyCache, policyByGroupName
         ).forEachOrdered(Cache::invalidateAll);
