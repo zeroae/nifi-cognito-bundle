@@ -48,19 +48,20 @@ public abstract class AbstractCognitoProvider {
     }
 
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
+        pageSize = MAX_PAGE_SIZE;
+
+        tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
+
+        userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
+        if (userPoolId == null)
+            throw new AuthorizerCreationException("User Pool must be set.");
+
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);
             cognitoClient = configureClient(credentialsFile);
         } catch (IOException e) {
             throw new AuthorizerCreationException(e.getMessage(), e);
         }
-        pageSize = MAX_PAGE_SIZE;
-
-        userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
-        if (userPoolId == null)
-            throw new AuthorizerCreationException("User Pool must be set.");
-
-        tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
     }
 
     public void preDestruction() throws AuthorizerDestructionException {

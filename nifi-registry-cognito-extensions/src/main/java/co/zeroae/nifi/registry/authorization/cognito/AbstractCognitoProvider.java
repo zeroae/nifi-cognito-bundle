@@ -20,7 +20,7 @@ import java.nio.file.Paths;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-public class AbstractCognitoProvider {
+public abstract class AbstractCognitoProvider {
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
     static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
@@ -48,20 +48,20 @@ public class AbstractCognitoProvider {
 
 
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException {
+        pageSize = MAX_PAGE_SIZE;
+
+        tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
+
+        userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
+        if (userPoolId == null)
+            throw new SecurityProviderCreationException("User Pool must be set.");
+
         try {
             final String credentialsFile = getProperty(configurationContext, PROP_AWS_CREDENTIALS_FILE, null);
             cognitoClient = configureClient(credentialsFile);
         } catch (IOException e) {
             throw new SecurityProviderCreationException(e.getMessage(), e);
         }
-
-        pageSize = MAX_PAGE_SIZE;
-
-        userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
-        if (userPoolId == null)
-            throw new SecurityProviderCreationException("User Pool must be set.");
-
-        tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
     }
 
     public void preDestruction() throws SecurityProviderDestructionException {
