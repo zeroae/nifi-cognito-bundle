@@ -47,7 +47,7 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
         super.onConfigured(configurationContext);
 
-        policyGroupPrefix = ACCESS_POLICY_GROUP_PREFIX + tenantId;
+        policyGroupPrefix = ACCESS_POLICY_GROUP_PREFIX + tenantId + ":";
 
         final PropertyValue userGroupProviderIdentifier = configurationContext.getProperty(PROP_USER_GROUP_PROVIDER);
         if (!userGroupProviderIdentifier.isSet())
@@ -233,7 +233,7 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
     }
 
     protected String getGroupName(String resource, RequestAction action) {
-        return String.join(":", policyGroupPrefix, action.toString(), resource);
+        return policyGroupPrefix + action + ":" + resource;
     }
 
     protected Map.Entry<String, RequestAction> getResourceAndAction(String groupName) {
