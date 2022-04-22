@@ -84,10 +84,13 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
         if (initialNodeGroupIdentity != null)
             initialNodeGroup = userGroupProvider.getGroupByName(initialNodeGroupIdentity);
 
-        applyInitialPolicies();
+        createInitialPolicies();
     }
 
-    private void applyInitialPolicies() {
+    protected void createInitialPolicies() {
+        StopWatch watch = new StopWatch();
+        watch.start();
+
         final List<RequestAction> write = Collections.singletonList(RequestAction.WRITE);
         final List<RequestAction> read = Collections.singletonList(RequestAction.READ);
         final List<RequestAction> all = Arrays.asList(RequestAction.READ, RequestAction.WRITE);
@@ -128,6 +131,9 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
                     return rv == null ? addAccessPolicy(policy, false) : rv;
                 })
                 .forEach(policy -> addPrincipalToPolicy(principal, policy)));
+
+        watch.stop();
+        logger.info("Initial Policies created: " + watch.getDuration());
     }
 
     @Override

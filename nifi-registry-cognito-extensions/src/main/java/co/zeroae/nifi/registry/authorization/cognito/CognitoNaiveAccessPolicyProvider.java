@@ -90,10 +90,13 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider im
                     .findFirst()
                     .orElse(null);
 
-        applyInitialPolicies();
+        createInitialPolicies();
     }
 
-    private void applyInitialPolicies() {
+    protected void createInitialPolicies() {
+        StopWatch watch = new StopWatch();
+        watch.start();
+
         // Ideally we would use this, but it is in the wrong .jar
         // https://github.com/apache/nifi/blob/main/nifi-registry/nifi-registry-core/nifi-registry-framework/src/main/java/org/apache/nifi/registry/security/authorization/util/InitialPolicies.java
         final List<RequestAction> read = Collections.singletonList(RequestAction.READ);
@@ -142,6 +145,9 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider im
                     return rv == null ? addAccessPolicy(policy, false) : rv;
                 })
                 .forEach(policy -> addPrincipalToPolicy(principal, policy)));
+
+        watch.stop();
+        logger.info("Initial Policies created: " + watch.getDuration());
     }
 
     @Override
