@@ -32,8 +32,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
     LoadingCache<String, UserAndGroups> userAndGroupsCache;
 
     @Override
-    public void initialize(UserGroupProviderInitializationContext initializationContext) throws SecurityProviderCreationException {
-        super.initialize(initializationContext);
+    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException{
         // TODO: Use a Cache Spec String
         groupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
@@ -98,10 +97,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                         .filter(user -> !user.username().startsWith(GROUP_PROXY_USER_PREFIX))
                         .collect(Collectors.toSet())
                 );
-    }
 
-    @Override
-    public void onConfigured(AuthorizerConfigurationContext configurationContext) throws SecurityProviderCreationException{
         super.onConfigured(configurationContext);
         Stream.of(
                 groupTypeCache, groupsCache,
