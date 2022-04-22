@@ -34,6 +34,11 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .handleResult(null)
                 .abortOn(IllegalStateException.class)
                 .build();
+        RetryPolicy<Object> maxRetryPolicy= RetryPolicy.builder()
+                .withMaxAttempts(10)
+                .withBackoff(Duration.ofMillis(100), Duration.ofSeconds(5))
+                .abortOn(IllegalStateException.class)
+                .build();
 
         initialUsers.stream()
                 .filter(user -> getUser(user.getIdentifier()) == null)
@@ -57,11 +62,13 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                                     .compose(nullRetryPolicy)
                                     .get(() -> addGroup(group, false)),
                     "Could not initialize group " + group);
-                    group.getUsers().forEach(user ->
-                            Failsafe.with(nullRetryPolicy)
-                                    .run(() -> addUserToGroup(user, group.getIdentifier()))
-                    );
                 });
+
+        initialGroups.stream()
+                .filter(group -> getGroup(group.getIdentifier()) != null)
+                .forEach(group -> group.getUsers().forEach(user -> Failsafe.with(maxRetryPolicy).run(() ->
+                        addUserToGroup(user, group.getIdentifier())
+                )));
         watch.stop();
         logger.info("Initial Users/Groups created: " + watch.getDuration());
     }
@@ -69,7 +76,6 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     @Override
     public Set<User> getUsers() throws AuthorizationAccessException {
         StopWatch watch = new StopWatch();
-        final Set<User> rv = new HashSet<>();
         final ListUsersRequest request = ListUsersRequest.builder()
                 .userPoolId(userPoolId)
                 .limit(pageSize)
@@ -77,22 +83,25 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
                 .build();
         watch.start();
         try {
-            cognitoClient.listUsersPaginator(request).users().forEach(user -> {
-                final User.Builder userBuilder = new User.Builder()
-                        .identifier(user.username());
-                user.attributes().forEach(attribute -> {
-                    if (attribute.name().equals(IDENTITY_ATTRIBUTE))
-                        userBuilder.identity(attribute.value());
-                });
-                rv.add(userBuilder.build());
-            });
+            final Set<User> rv = cognitoClient.listUsersPaginator(request).users().stream()
+                    .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
+                    .map(user -> {
+                        final User.Builder userBuilder = new User.Builder()
+                                .identifier(user.username());
+                        user.attributes().forEach(attribute -> {
+                            if (attribute.name().equals(IDENTITY_ATTRIBUTE))
+                                userBuilder.identity(attribute.value());
+                        });
+                        return userBuilder.build();
+                    })
+                    .collect(Collectors.toSet());
+            return Collections.unmodifiableSet(rv);
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {
             watch.stop();
             logger.debug("getUsers: " + watch.getDuration());
         }
-        return Collections.unmodifiableSet(rv);
     }
 
     @Override
@@ -152,27 +161,28 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     @Override
     public Set<Group> getGroups() throws AuthorizationAccessException {
         StopWatch watch = new StopWatch();
-        final Set<Group> rv = new HashSet<>();
         final ListGroupsRequest listGroupsRequest = ListGroupsRequest.builder()
                 .userPoolId(userPoolId)
                 .limit(pageSize)
                 .build();
         watch.start();
         try {
-            cognitoClient.listGroupsPaginator(listGroupsRequest).groups().forEach(group -> {
-                final Group.Builder groupBuilder = new Group.Builder()
-                        .identifier(group.groupName())
-                        .name(group.description());
-                getUsersInGroup(group.groupName()).forEach(groupBuilder::addUser);
-                rv.add(groupBuilder.build());
-            });
+            final Set<Group> rv = cognitoClient.listGroupsPaginator(listGroupsRequest).groups().stream()
+                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
+                    .map(group -> {
+                        final Group.Builder groupBuilder = new Group.Builder()
+                                .identifier(group.groupName())
+                                .name(group.description());
+                        getUsersInGroup(group.groupName()).forEach(groupBuilder::addUser);
+                        return groupBuilder.build();
+                    }).collect(Collectors.toSet());
+            return Collections.unmodifiableSet(rv);
         } catch (CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException(e.getMessage(), e);
         } finally {
             watch.stop();
             logger.debug("getGroups: " + watch.getDuration());
         }
-        return Collections.unmodifiableSet(rv);
     }
 
     @Override
@@ -240,6 +250,7 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
             final Set<Group> groups = Collections.unmodifiableSet(cognitoClient.adminListGroupsForUserPaginator(request)
                     .groups()
                     .stream()
+                    .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                     .map(group -> getGroup(group.groupName())).collect(Collectors.toSet()));
 
             return new UserAndGroups() {
@@ -344,12 +355,24 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
     }
 
     protected Group addGroup(Group group, boolean setUsers) {
+        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         CreateGroupRequest request = CreateGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
                 .description(group.getName())
                 .build();
+        AdminCreateUserRequest adminCreateUserRequest = AdminCreateUserRequest.builder()
+                .userPoolId(userPoolId)
+                .username(proxyUsername)
+                .userAttributes(
+                        AttributeType.builder().name(IDENTITY_ATTRIBUTE).value(String.format(
+                                GROUP_PROXY_USER_EMAIL_FORMAT, group.getIdentifier())).build(),
+                        AttributeType.builder().name("email_verified").value("true").build())
+                .forceAliasCreation(false)
+                .messageAction(MessageActionType.SUPPRESS)
+                .build();
         try {
+            cognitoClient.adminCreateUser(adminCreateUserRequest);
             cognitoClient.createGroup(request);
         } catch (GroupExistsException e) {
             throw new IllegalStateException(e.getMessage(), e);
@@ -412,13 +435,22 @@ public class CognitoNaiveUserGroupProvider extends AbstractCognitoUserGroupProvi
 
     @Override
     public Group deleteGroup(Group group) throws AuthorizationAccessException {
+        final String proxyUsername = AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX + group.getIdentifier();
         DeleteGroupRequest request = DeleteGroupRequest.builder()
                 .userPoolId(userPoolId)
                 .groupName(group.getIdentifier())
                 .build();
         try {
             cognitoClient.deleteGroup(request);
-        } catch (final ResourceNotFoundException e ) {
+            cognitoClient.adminDisableUser(AdminDisableUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(proxyUsername)
+                    .build());
+            cognitoClient.adminDeleteUser(AdminDeleteUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(proxyUsername)
+                    .build());
+        } catch (final ResourceNotFoundException | UserNotFoundException e) {
             return null;
         } catch (final CognitoIdentityProviderException e) {
             throw new AuthorizationAccessException("Error deleting group: " + group.getName(), e);

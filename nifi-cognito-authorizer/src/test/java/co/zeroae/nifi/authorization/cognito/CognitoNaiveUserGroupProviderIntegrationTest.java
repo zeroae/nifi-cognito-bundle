@@ -168,33 +168,6 @@ public class CognitoNaiveUserGroupProviderIntegrationTest {
     }
 
     @Test
-    public void testGroupPagination() {
-        final int pageSize = 1;
-        Mockito.when(authContext.getProperty(Mockito.eq(CognitoNaiveUserGroupProvider.PROP_PAGE_SIZE)))
-                .thenReturn(new MockPropertyValue(Integer.toString(pageSize)));
-
-        setupTestingProvider();
-        Set<Group> groups = testingProvider.getGroups();
-        assertTrue(groups.size() > pageSize);
-    }
-
-    @Test
-    public void testUserPagination() {
-        final int pageSize = 1;
-        Mockito.when(authContext.getProperty(Mockito.eq(CognitoNaiveUserGroupProvider.PROP_PAGE_SIZE)))
-                .thenReturn(new MockPropertyValue(Integer.toString(pageSize)));
-
-        setupTestingProvider();
-        int maxUsersInSingleGroup = 0;
-        for (Group group : testingProvider.getGroups()) {
-            maxUsersInSingleGroup = Integer.max(maxUsersInSingleGroup, group.getUsers().size());
-            if (maxUsersInSingleGroup > pageSize)
-                break;
-        }
-        assertTrue(maxUsersInSingleGroup > pageSize, "max(group.users.size) > 1");
-    }
-
-    @Test
     public void testGetUserByEmail() {
         setupTestingProvider();
         assertNotNull(testingProvider.getUserByIdentity(ADMIN_IDENTITY));

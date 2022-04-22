@@ -33,7 +33,6 @@ import java.util.stream.Stream;
 public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvider {
     public static final String PROP_AWS_CREDENTIALS_FILE = "AWS Credentials File";
     public static final String PROP_USER_POOL_ID = "User Pool";
-    public static final String PROP_PAGE_SIZE = "Page Size";
     public static final String PROP_MESSAGE_ACTION = "Message Action";
 
     public static final String PROP_ADD_USER_PREFIX = "Add User";
@@ -42,8 +41,14 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     public static final String IDENTITY_ATTRIBUTE = "email";
 
-    public static final String DEFAULT_PAGE_SIZE = "50";
     public static final int MAX_PAGE_SIZE = 60;
+
+    // TODO: This should come from the userpool itself through Tags!
+    //       Accepting it as a configuration option may cause inconsistency in case of misconfiguration across clusters.
+    public static final String EXCLUDE_GROUP_PREFIX = "acl:";
+
+    public static final String GROUP_PROXY_USER_PREFIX = "grp:";
+    public static final String GROUP_PROXY_USER_EMAIL_FORMAT = "%s@group.local";
 
     static final Pattern INITIAL_USER_IDENTITY_PATTERN = Pattern.compile(
             PROP_ADD_USER_PREFIX + " (?<identifier>\\S+)");
@@ -77,9 +82,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
 
     @Override
     public void onConfigured(AuthorizerConfigurationContext configurationContext) throws AuthorizerCreationException {
-        pageSize = Integer.parseInt(getProperty(configurationContext, PROP_PAGE_SIZE, DEFAULT_PAGE_SIZE));
-        if (pageSize > MAX_PAGE_SIZE)
-            throw new AuthorizerCreationException(String.format("Max page size for Cognito is %d.", MAX_PAGE_SIZE));
+        pageSize = MAX_PAGE_SIZE;
 
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
@@ -143,7 +146,7 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
 
         AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        if (isNotBlank(accessKey) && isNotBlank(secretKey))
+        if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey))
             return CognitoIdentityProviderClient.builder()
                     .region(region)
                     .credentialsProvider(StaticCredentialsProvider.create(basicCredentials))
@@ -165,10 +168,6 @@ public abstract class AbstractCognitoUserGroupProvider implements UserGroupProvi
             properties.load(in);
             return properties;
         }
-    }
-
-    private static boolean isNotBlank(final String value) {
-        return value != null && !value.trim().equals("");
     }
 
     @Override

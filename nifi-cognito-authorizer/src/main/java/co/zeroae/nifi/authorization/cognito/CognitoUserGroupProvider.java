@@ -1,7 +1,6 @@
 package co.zeroae.nifi.authorization.cognito;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.apache.nifi.authorization.*;
@@ -38,7 +37,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
         // TODO: Use a Cache Spec String
         groupsCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(new CacheLoaderAll<String, Group>() {
+                .build(new AbstractCacheLoaderAll<String, Group>() {
                     @Override
                     public Optional<Group> load(@NonNull String key) {
                         return Optional.ofNullable(CognitoUserGroupProvider.super.getGroup(key));
@@ -62,6 +61,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .groups()
                         .stream()
+                        .filter(group -> !group.groupName().startsWith(AbstractCognitoUserGroupProvider.EXCLUDE_GROUP_PREFIX))
                         .collect(Collectors.toSet())
                 );
 
@@ -75,7 +75,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                 .build(CognitoUserGroupProvider.super::getUserAndGroups);
         usersCache = Caffeine.newBuilder()
                 .refreshAfterWrite(1, TimeUnit.MINUTES)
-                .build(new CacheLoaderAll<String, User>() {
+                .build(new AbstractCacheLoaderAll<String, User>() {
                     @Override
                     public Optional<User> load(@NonNull String key) {
                         return Optional.ofNullable(CognitoUserGroupProvider.super.getUser(key));
@@ -95,6 +95,7 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
                                 .build())
                         .users()
                         .stream()
+                        .filter(user -> !user.username().startsWith(AbstractCognitoUserGroupProvider.GROUP_PROXY_USER_PREFIX))
                         .collect(Collectors.toSet())
                 );
     }
@@ -216,20 +217,4 @@ public class CognitoUserGroupProvider extends CognitoNaiveUserGroupProvider {
     }
 
 
-    private abstract static class CacheLoaderAll<K, V> implements CacheLoader<K, Optional<V>> {
-        @Override
-        public @NonNull Map<@NonNull K, @NonNull Optional<V>> loadAll(@NonNull Iterable<? extends @NonNull K> keys) {
-            Map<K, Optional<V>> rv = new HashMap<>();
-            Set<V> allValues = getAllValues();
-            allValues.forEach(v -> rv.put(getKey(v), Optional.ofNullable(v)));
-            keys.forEach(key -> {
-                if (!rv.containsKey(key))
-                    rv.put(key, Optional.empty());
-            });
-            return rv;
-        }
-
-        public abstract Set<V> getAllValues();
-        public abstract K getKey(V value);
-    }
 }
