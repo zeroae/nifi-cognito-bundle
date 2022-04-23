@@ -239,13 +239,35 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
     }
 
     protected String getGroupName(String resource, RequestAction action) {
-        return policyGroupPrefix + action + ":" + resource;
+        return policyGroupPrefix + getActionCode(action) + ":" + resource;
     }
 
     protected Map.Entry<String, RequestAction> getResourceAndAction(String groupName) {
-        // <acl>:<nfc|nfr>:[cluster-id|registry-id]:<action>:<resource>
+        // acl:<nfc|nfr>:[tenant-id]:<action-code>:<resource>
         final String[] acl = groupName.split(":", 5);
-        return new AbstractMap.SimpleEntry<>(acl[4], RequestAction.valueOfValue(acl[3]));
+        return new AbstractMap.SimpleEntry<>(acl[4], getActionFromCode(acl[3]));
+    }
+
+    private String getActionCode(RequestAction action) {
+        switch (action) {
+            case READ:
+                return "R";
+            case WRITE:
+                return "W";
+            default:
+                return action.toString();
+        }
+    }
+
+    private RequestAction getActionFromCode(String code) {
+        switch (code) {
+            case "R":
+                return RequestAction.READ;
+            case "W":
+                return RequestAction.WRITE;
+            default:
+                return RequestAction.valueOfValue(code);
+        }
     }
 
     @Override

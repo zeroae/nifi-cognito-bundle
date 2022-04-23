@@ -15,7 +15,8 @@ import java.lang.UnsupportedOperationException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider implements ConfigurableAccessPolicyProvider, AccessPolicyProvider {
+public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
+        implements ConfigurableAccessPolicyProvider {
     private static final Logger logger = LoggerFactory.getLogger(CognitoNaiveAccessPolicyProvider.class);
 
     public static final String PROP_USER_GROUP_PROVIDER = "User Group Provider";
@@ -253,13 +254,39 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider im
     }
 
     protected String getGroupName(String resource, RequestAction action) {
-        return policyGroupPrefix + action + ":" + resource;
+        return policyGroupPrefix + getActionCode(action)+ ":" + resource;
     }
 
     protected Map.Entry<String, RequestAction> getResourceAndAction(String groupName) {
-        // <acl>:<nfc|nfr>:[cluster-id|registry-id]:<action>:<resource>
+        // acl:<nfc|nfr>:[tenant-id]:<action-code>:<resource>
         final String[] acl = groupName.split(":", 5);
-        return new AbstractMap.SimpleEntry<>(acl[4], RequestAction.valueOfValue(acl[3]));
+        return new AbstractMap.SimpleEntry<>(acl[4], getActionFromCode(acl[3]));
+    }
+
+    private String getActionCode(RequestAction action) {
+        switch (action) {
+            case READ:
+                return "R";
+            case WRITE:
+                return "W";
+            case DELETE:
+                return "D";
+            default:
+                return action.toString();
+        }
+    }
+
+    private RequestAction getActionFromCode(String code) {
+        switch (code) {
+            case "R":
+                return RequestAction.READ;
+            case "W":
+                return RequestAction.WRITE;
+            case "D":
+                return RequestAction.DELETE;
+            default:
+                return RequestAction.valueOfValue(code);
+        }
     }
 
     @Override
