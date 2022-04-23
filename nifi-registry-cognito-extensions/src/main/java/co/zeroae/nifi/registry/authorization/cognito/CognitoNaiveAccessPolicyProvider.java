@@ -254,7 +254,11 @@ public class CognitoNaiveAccessPolicyProvider extends AbstractCognitoProvider
     }
 
     protected String getGroupName(String resource, RequestAction action) {
-        return policyGroupPrefix + getActionCode(action)+ ":" + resource;
+        String groupName = policyGroupPrefix + getActionCode(action) + ":" + resource;
+        if (groupName.length() > 128)
+            throw new AuthorizationAccessException("Contact developer, the ACL policy is over 128 characters long: "
+                    + groupName + ".");
+        return groupName;
     }
 
     protected Map.Entry<String, RequestAction> getResourceAndAction(String groupName) {
