@@ -51,6 +51,8 @@ public abstract class AbstractCognitoProvider {
         pageSize = MAX_PAGE_SIZE;
 
         tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
+        if (tenantId.contains(":") || tenantId.length() > 16)
+            throw new AuthorizerCreationException("Tenant Id must be less than 16 characters and not container ':'");
 
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
@@ -114,7 +116,6 @@ public abstract class AbstractCognitoProvider {
         }
         return defaultValue;
     }
-
 
     protected long getDelayProperty(AuthorizerConfigurationContext authContext, String propertyName, String defaultValue) {
         final String propertyValue = getProperty(authContext, propertyName, defaultValue);

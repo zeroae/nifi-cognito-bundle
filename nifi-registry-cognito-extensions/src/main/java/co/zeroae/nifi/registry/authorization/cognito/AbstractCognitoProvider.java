@@ -51,6 +51,8 @@ public abstract class AbstractCognitoProvider {
         pageSize = MAX_PAGE_SIZE;
 
         tenantId = getProperty(configurationContext, PROP_TENANT_ID, "");
+        if (tenantId.contains(":") || tenantId.length() > 16)
+            throw new SecurityProviderCreationException("Tenant Id must be less than 16 characters and must not include ':'");
 
         userPoolId = getProperty(configurationContext, PROP_USER_POOL_ID, null);
         if (userPoolId == null)
