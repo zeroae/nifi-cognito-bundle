@@ -1,12 +1,12 @@
 # nifi-cognito-bundle
 NiFi Authorization Extension using AWS Cognito
 
-## Build Instructions
- - Ensure you have AWS Credentials available
+## Build/Install Instructions
+1. Ensure you have AWS Credentials available
     ```
     mvn clean install
-    cp nifi-cognito-nar/target/*.nar $NIFI_HOME/extensions
     ```
+2. The binaries are located in `nifi-cognito-nar/target` and `nifi-registry-cognito-assembly`
 
 ## Usage
 1. Add new `userGroupProvider` and `accessPolicyProvider` elements to `authorizers.xml`.
@@ -34,6 +34,9 @@ NiFi Authorization Extension using AWS Cognito
         <userGroupProvider>
             <identifier>cognito-configurable-user-group-provider</identifier>
             <class>co.zeroae.nifi.authorization.cognito.CognitoUserGroupProvider</class>
+            <!-- Use this class for the NiFi Registry
+            <class>co.zeroae.nifi.registry.authorization.cognito.CognitoUserGroupProvider</class>
+            -->
             <property name="AWS Credentials File">./conf/bootstrap-aws.conf</property>
             <property name="User Pool">us-east-1_XXXXXXX</property>
             <property name="Page Size">50</property>
@@ -54,6 +57,9 @@ NiFi Authorization Extension using AWS Cognito
    
             - User Pool - The *same* Cognito User Pool Id where the Users and Groups are stored.
    
+            - Tenant Id - An id to attach to every Access Policy stored in the User Pool. Must be the same for nodes 
+                of the same cluster. If two clusters share the same tenant id then they will share the access policies.
+   
             - User Group Provider - The identifier of the Cognito User Group Provider defined above.
    
             - Initial Admin Identity <user-uuid> - The identity of the initial admin user. The user must already exist
@@ -69,6 +75,9 @@ NiFi Authorization Extension using AWS Cognito
         <accessPolicyProvider>
             <identifier>cognito-access-policy-provider</identifier>
             <class>co.zeroae.nifi.authorization.cognito.CognitoAccessPolicyProvider</class>
+            <!-- Use this class for the NiFi Registry
+            <class>co.zeroae.nifi.registry.authorization.cognito.CognitoUserGroupProvider</class>
+            -->
             <property name="AWS Credentials File">./conf/bootstrap-aws.conf</property>
             <property name="User Pool">us-east-1_edD0TJEd0</property>
             <property name="User Group Provider">cognito-configurable-user-group-provider</property>
@@ -77,10 +86,21 @@ NiFi Authorization Extension using AWS Cognito
         </accessPolicyProvider>
     </authorizers>
     ```
-2. Configure an Identity Mapping in `nifi.properties`
+   
+2. Updadte `nifi.properties` 
     ```properties
+    nifi.nar.library.directory.cognito=<path-to>/nifi-cognito-bundle/nifi-cognito-nar/target
     nifi.security.identity.mapping.pattern.dn=^CN=(.*?), OU=(.*?)$
     nifi.security.identity.mapping.value.dn=$1@$2
     nifi.security.identity.mapping.transform.dn=LOWER
     ```
-3. Start NiFi
+
+3. Update `nifi-registry.properties`
+    ```properties
+    nifi.registry.extension.dir.cognito=<path-to>/nifi-cognito-bundle/nifi-registry-cognito-assembly/target/cognito/lib
+    nifi.registry.security.identity.mapping.pattern.dn=^CN=(.*?), OU=(.*?)$
+    nifi.registry.security.identity.mapping.value.dn=$1@$2
+    nifi.registry.security.identity.mapping.transform.dn=LOWER
+    ```
+   
+4. Start NiFi and the Registry
