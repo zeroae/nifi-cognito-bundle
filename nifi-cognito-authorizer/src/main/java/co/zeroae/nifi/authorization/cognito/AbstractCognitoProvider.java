@@ -9,9 +9,17 @@ import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.retry.RetryMode;
+import software.amazon.awssdk.core.retry.RetryPolicy;
+import software.amazon.awssdk.core.retry.backoff.BackoffStrategy;
+import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClientBuilder;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -25,6 +33,7 @@ public abstract class AbstractCognitoProvider {
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
     static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 
+    public static final int MAX_ATTEMPTS = 10;
     public static final int MAX_PAGE_SIZE = 60;
     public static final String PROP_USER_POOL_ID = "User Pool";
     public static final String PROP_TENANT_ID = "Tenant Id";
@@ -73,27 +82,34 @@ public abstract class AbstractCognitoProvider {
     }
 
     CognitoIdentityProviderClient configureClient(final String awsCredentialsFilename) throws IOException {
-        if (awsCredentialsFilename == null) {
-            return getDefaultClient();
+        final AwsCredentialsProvider credentialsProvider;
+        if (awsCredentialsFilename != null) {
+            final Properties properties = loadProperties(awsCredentialsFilename);
+            final String accessKey = properties.getProperty(AbstractCognitoProvider.ACCESS_KEY_PROPS_NAME);
+            final String secretKey = properties.getProperty(AbstractCognitoProvider.SECRET_KEY_PROPS_NAME);
+            if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey)) {
+                final AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
+                credentialsProvider = StaticCredentialsProvider.create(basicCredentials);
+            } else {
+                credentialsProvider = DefaultCredentialsProvider.create();
+            }
+        } else {
+            credentialsProvider = DefaultCredentialsProvider.create();
         }
-        final Properties properties = loadProperties(awsCredentialsFilename);
-        final String accessKey = properties.getProperty(AbstractCognitoProvider.ACCESS_KEY_PROPS_NAME);
-        final String secretKey = properties.getProperty(AbstractCognitoProvider.SECRET_KEY_PROPS_NAME);
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
+        final ClientOverrideConfiguration overrideConfiguration = ClientOverrideConfiguration.builder()
+                .retryPolicy(RetryPolicy.builder(RetryMode.ADAPTIVE)
+                        .additionalRetryConditionsAllowed(true)
+                        .fastFailRateLimiting(false)
+                        .numRetries(MAX_ATTEMPTS)
+                        .build()
+                )
+                .build();
 
-        AwsBasicCredentials basicCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        if (StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey))
-            return CognitoIdentityProviderClient.builder()
-                    .region(region)
-                    .credentialsProvider(StaticCredentialsProvider.create(basicCredentials))
-                    .build();
-        else
-            return getDefaultClient();
-    }
-
-    private CognitoIdentityProviderClient getDefaultClient() {
         return CognitoIdentityProviderClient.builder()
-                .region(Region.of(userPoolId.substring(0, userPoolId.indexOf('_'))))
+                .region(region)
+                .credentialsProvider(credentialsProvider)
+                .overrideConfiguration(overrideConfiguration)
                 .build();
     }
 
