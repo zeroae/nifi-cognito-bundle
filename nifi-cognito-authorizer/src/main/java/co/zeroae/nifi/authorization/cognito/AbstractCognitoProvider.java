@@ -17,14 +17,18 @@ import software.amazon.awssdk.core.retry.RetryMode;
 import software.amazon.awssdk.core.retry.RetryPolicy;
 import software.amazon.awssdk.core.retry.backoff.BackoffStrategy;
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy;
+import software.amazon.awssdk.core.retry.conditions.OrRetryCondition;
+import software.amazon.awssdk.core.retry.conditions.RetryCondition;
+import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
-import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClientBuilder;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.TooManyRequestsException;
 
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -33,7 +37,7 @@ public abstract class AbstractCognitoProvider {
     static final String ACCESS_KEY_PROPS_NAME = "aws.access.key.id";
     static final String SECRET_KEY_PROPS_NAME = "aws.secret.access.key";
 
-    public static final int MAX_ATTEMPTS = 10;
+    public static final int MAX_ATTEMPTS = BackoffStrategy.RETRIES_ATTEMPTED_CEILING;
     public static final int MAX_PAGE_SIZE = 60;
     public static final String PROP_USER_POOL_ID = "User Pool";
     public static final String PROP_TENANT_ID = "Tenant Id";
@@ -97,13 +101,26 @@ public abstract class AbstractCognitoProvider {
             credentialsProvider = DefaultCredentialsProvider.create();
         }
         final Region region = Region.of(userPoolId.substring(0, userPoolId.indexOf('_')));
-        final ClientOverrideConfiguration overrideConfiguration = ClientOverrideConfiguration.builder()
-                .retryPolicy(RetryPolicy.builder(RetryMode.ADAPTIVE)
-                        .additionalRetryConditionsAllowed(true)
-                        .fastFailRateLimiting(false)
-                        .numRetries(MAX_ATTEMPTS)
-                        .build()
+        final RetryPolicy retryPolicy = RetryPolicy.builder(RetryMode.ADAPTIVE)
+                .additionalRetryConditionsAllowed(true)
+                .fastFailRateLimiting(false)
+                .numRetries(Math.min(MAX_ATTEMPTS, BackoffStrategy.RETRIES_ATTEMPTED_CEILING))
+                .retryCondition(OrRetryCondition.create(
+                        RetryOnExceptionsCondition.create(TooManyRequestsException.class),
+                        RetryCondition.defaultRetryCondition()
+                ))
+                .backoffStrategy(FullJitterBackoffStrategy.builder()
+                        .maxBackoffTime(Duration.ofSeconds(30))
+                        .baseDelay(Duration.ofMillis(500))
+                        .build())
+                .throttlingBackoffStrategy(FullJitterBackoffStrategy.builder()
+                                .maxBackoffTime(Duration.ofSeconds(30))
+                                .baseDelay(Duration.ofMillis(500))
+                                .build()
                 )
+                .build();
+        final ClientOverrideConfiguration overrideConfiguration = ClientOverrideConfiguration.builder()
+                .retryPolicy(retryPolicy)
                 .build();
 
         return CognitoIdentityProviderClient.builder()

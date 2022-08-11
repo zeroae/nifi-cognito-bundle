@@ -90,15 +90,20 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
 
     @Override
     public AccessPolicy getAccessPolicy(String resource, RequestAction action) throws AuthorizationAccessException {
-        return Objects.requireNonNull(policyByGroupName.get(getGroupName(resource, action))).orElse(null);
+        final Set<AccessPolicy> allPolicies = getAccessPolicies();
+        if (allPolicies == null)
+            return null;
+        return allPolicies.stream()
+                .filter(policy -> policy.getResource().equals(resource) && policy.getAction().equals(action))
+                .findFirst()
+                .orElse(null);
     }
 
     @Override
     public AccessPolicy addAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
         try {
-            AccessPolicy rv = super.addAccessPolicy(accessPolicy);
             groupTypeCache.invalidateAll();
-            return rv;
+            return super.addAccessPolicy(accessPolicy);
         } finally {
             invalidate(accessPolicy);
         }
@@ -113,6 +118,7 @@ public class CognitoAccessPolicyProvider extends CognitoNaiveAccessPolicyProvide
     @Override
     public AccessPolicy deleteAccessPolicy(AccessPolicy accessPolicy) throws AuthorizationAccessException {
         try {
+            groupTypeCache.invalidateAll();
             return super.deleteAccessPolicy(accessPolicy);
         } finally {
             invalidate(accessPolicy);
